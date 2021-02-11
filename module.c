@@ -94,20 +94,22 @@ static ssize_t devAttrDtMode_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrThaTh_show(struct device* dev,
-		struct device_attribute* attr,
-		char *buf);
+		struct device_attribute* attr, char *buf);
 
 static ssize_t devAttrThaThv_show(struct device* dev,
-		struct device_attribute* attr,
-		char *buf);
+		struct device_attribute* attr, char *buf);
+
+static ssize_t devAttrThaCalib_show(struct device* dev,
+		struct device_attribute* attr, char *buf);
+
+static ssize_t devAttrThaCalib_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrLm75aU9_show(struct device* dev,
-		struct device_attribute* attr,
-		char *buf);
+		struct device_attribute* attr, char *buf);
 
 static ssize_t devAttrLm75aU16_show(struct device* dev,
-		struct device_attribute* attr,
-		char *buf);
+		struct device_attribute* attr, char *buf);
 
 static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
 		struct device_attribute* attr, char *buf);
@@ -396,7 +398,7 @@ static struct DeviceAttrBean devAttrBeansTha[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "temp_rh_vraw_vidx",
+				.name = "temp_rh_voc",
 				.mode = 0440,
 			},
 			.show = devAttrThaThv_show,
@@ -412,6 +414,17 @@ static struct DeviceAttrBean devAttrBeansTha[] = {
 			},
 			.show = devAttrThaTh_show,
 			.store = NULL,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "temp_calib",
+				.mode = 0660,
+			},
+			.show = devAttrThaCalib_show,
+			.store = devAttrThaCalib_store,
 		},
 	},
 
@@ -998,6 +1011,28 @@ static ssize_t devAttrThaThv_show(struct device* dev,
 
 	return sprintf(buf, "%d %d %d %d %d %d %d\n", dt, t, tCal, rh, rhCal, sraw,
 			voc_index);
+}
+
+static ssize_t devAttrThaCalib_show(struct device* dev,
+		struct device_attribute* attr, char *buf) {
+	return sprintf(buf, "%d %d\n", tmpCalibM, tmpCalibB);
+}
+
+static ssize_t devAttrThaCalib_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count) {
+	long m, b;
+	char *end = NULL;
+
+	m = simple_strtol(buf, &end, 10);
+	if (++end >= buf + count) {
+		return -EINVAL;
+	}
+	b = simple_strtol(end, &end, 10);
+
+	tmpCalibM = m;
+	tmpCalibB = b;
+
+	return count;
 }
 
 static ssize_t devAttrLm75aU9_show(struct device* dev,
