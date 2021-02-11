@@ -1,0 +1,101 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835";
+	
+	fragment@0 {
+		target = <&gpio>;
+		__overlay__ {
+			exosensepi_di: exosensepi_di {
+				brcm,pins = <16 17 23>;
+				brcm,function = <0>; /* in */
+				brcm,pull = <0>; /* no pull */
+			};
+			
+			exosensepi_buzz: exosensepi_buzz {
+				/* PWM1: 13,4(Alt0) */
+				brcm,pins = <13>;
+				brcm,function = <4>; 
+			};
+		};
+	};
+	
+	fragment@1 {
+		target = <&pwm>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&exosensepi_buzz &exosensepi_di>;
+			assigned-clock-rates = <100000000>;
+			status = "okay";
+		};
+	};
+	
+	fragment@2 {
+		target = <&i2c_arm>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+			
+			sht40: sht40@44 {
+				compatible = "sferalabs,exosensepi";
+				reg = <0x44>;
+				status = "okay";
+			};
+			
+			sgp40: sgp40@59 {
+				compatible = "sferalabs,exosensepi";
+				reg = <0x59>;
+				status = "okay";
+			};
+			
+			lm75aU9: lm75aU9@48 {
+				compatible = "sferalabs,exosensepi";
+				reg = <0x48>;
+				status = "okay";
+			};
+			
+			lm75aU16: lm75aU9@49 {
+				compatible = "sferalabs,exosensepi";
+				reg = <0x49>;
+				status = "okay";
+			};
+		};
+	};
+	
+	fragment@3 {
+		target = <&i2s>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+	
+	fragment@4 {
+		target-path = "/";
+		__overlay__ {
+			card_codec: card-codec {
+				#sound-dai-cells = <0>;
+				compatible = "invensense,ics43432";
+				status = "okay";
+			};
+		};
+	};
+
+	fragment@5 {
+		target = <&sound>;
+		__overlay__ {
+			compatible = "simple-audio-card";
+			simple-audio-card,format = "i2s";
+			simple-audio-card,name = "exosensepi-mic";
+			status = "okay";
+			simple-audio-card,cpu {
+				sound-dai = <&i2s>;
+			};
+			dailink0_slave: simple-audio-card,codec {
+				sound-dai = <&card_codec>;
+			};
+		};
+	};
+
+};

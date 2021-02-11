@@ -1,0 +1,1 @@
+SUBSYSTEM=="exosensepi", PROGRAM="/bin/sh -c 'find -L /sys/class/exosensepi/ -maxdepth 2 -exec chown root:exosensepi {} \; || true'"
