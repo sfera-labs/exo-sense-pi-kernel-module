@@ -130,11 +130,6 @@ Once set, use `/sys/class/pwm/pwmchip0/pwm1/period` and `/sys/class/pwm/pwmchip0
 
 Activate/deactivate the buzzer by writing `1`/`0` to `/sys/class/pwm/pwmchip0/pwm1/enable`. You can modify period and duty-cycle values while the buzzer is active. 
 
-# 100 Hz pulse, 80% duty cycle
-echo 10000000 > /sys/class/pwm/pwmchip0/pwm1/period
-echo 8000000 > /sys/class/pwm/pwmchip0/pwm1/duty_cycle
-echo 1 > /sys/class/pwm/pwmchip0/pwm1/enable
-
 ### Wiegand - `/sys/class/exosensepi/wiegand/`
 
 You can use the DT lines as a Wiegand interface for a keypad or card reader. Connect DT1/DT2 respctively to the D0/D1 lines of the Wiegand device.
