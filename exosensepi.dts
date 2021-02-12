@@ -61,6 +61,12 @@
 				reg = <0x49>;
 				status = "okay";
 			};
+			
+			opt3001: opt3001@45 {
+				compatible = "sferalabs,exosensepi";
+				reg = <0x45>;
+				status = "okay";
+			};
 		};
 	};
 	

@@ -114,6 +114,9 @@ static ssize_t devAttrLm75aU16_show(struct device* dev,
 static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
 		struct device_attribute* attr, char *buf);
 
+static ssize_t opt3001_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
 
@@ -154,6 +157,7 @@ struct i2c_client *sht40_i2c_client = NULL;
 struct i2c_client *sgp40_i2c_client = NULL;
 struct i2c_client *lm75aU16_i2c_client = NULL;
 struct i2c_client *lm75aU9_i2c_client = NULL;
+struct i2c_client *opt3001_i2c_client = NULL;
 struct mutex exosensepi_i2c_mutex;
 static VocAlgorithmParams voc_algorithm_params;
 
@@ -457,6 +461,21 @@ static struct DeviceAttrBean devAttrBeansSysTemp[] = {
 	{ }
 };
 
+static struct DeviceAttrBean devAttrBeansLux[] = {
+	{
+		.devAttr = {
+			.attr = {
+				.name = "lux",
+				.mode = 0440,
+			},
+			.show = opt3001_show,
+			.store = NULL,
+		},
+	},
+
+	{ }
+};
+
 static struct DeviceAttrBean devAttrBeansWiegand[] = {
 	{
 		.devAttr = {
@@ -572,6 +591,11 @@ static struct DeviceBean devices[] = {
 	{
 		.name = "sys_temp",
 		.devAttrBeans = devAttrBeansSysTemp,
+	},
+
+	{
+		.name = "lux",
+		.devAttrBeans = devAttrBeansLux,
 	},
 
 	{
@@ -1067,6 +1091,38 @@ static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
 	return sprintf(buf, "%d\n", temp);
 }
 
+static ssize_t opt3001_show(struct device* dev,
+		struct device_attribute* attr,
+		char *buf) {
+	int16_t res, man, exp;
+	uint8_t data[2];
+	int32_t lux;
+
+	if (opt3001_i2c_client == NULL) {
+		return -ENODEV;
+	}
+
+	if (!exosensepi_i2c_lock()) {
+		return -EBUSY;
+	}
+
+	res = i2c_smbus_read_i2c_block_data(opt3001_i2c_client, 0, 2, data);
+
+	exosensepi_i2c_unlock();
+
+	if (res != 2) {
+		return -EIO;
+	}
+
+	man = ((data[0] << 8) & 0xf00) + (data[1] & 0xff);
+	exp = (data[0] >> 4) & 0xf;
+	lux = man * (1 << exp);
+
+	// TODO test and return lux only
+
+	return sprintf(buf, "%d %d %d\n", man, exp, lux);
+}
+
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
 	return sprintf(buf, w1.enabled ? "1\n" : "0\n");
@@ -1399,6 +1455,9 @@ static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
 
 static int exosensepi_i2c_probe(struct i2c_client *client,
 		const struct i2c_device_id *id) {
+	int16_t res;
+	uint8_t data[2];
+	int i;
 	if (client->addr == 0x44) {
 		sht40_i2c_client = client;
 	} else if (client->addr == 0x59) {
@@ -1407,6 +1466,18 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 		lm75aU9_i2c_client = client;
 	} else if (client->addr == 0x49) {
 		lm75aU16_i2c_client = client;
+	} else if (client->addr == 0x45) {
+		opt3001_i2c_client = client;
+		// TODO test
+		data[0] = 0xcc;
+		data[1] = 0x10;
+		for (i = 0; i < 3; i++) {
+			printk(KERN_INFO "exosensepi: - | opt3001_i2c_client config\n"); // TODO remove
+			if (!i2c_smbus_write_i2c_block_data(opt3001_i2c_client, 1, 2,
+					data)) {
+				break;
+			}
+		}
 	}
 	printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
 	return 0;
