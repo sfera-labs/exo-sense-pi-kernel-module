@@ -203,7 +203,7 @@ Record a WAV audio file (stop with <kbd>Ctrl</kbd> + <kbd>C</kbd>):
 
     arecord -D plughw:1 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
 
-You can add software volume control with alsamixer; to this end, copy the `asoundrc` to `~/.asoundrc`:
+You can add software volume control with alsamixer; to this end, copy the `asoundrc` file from this repo to `~/.asoundrc`:
 
     cp asoundrc ~/.asoundrc
 
