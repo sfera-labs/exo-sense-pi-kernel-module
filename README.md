@@ -11,7 +11,7 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [Temperature, Humidity, Air quality](#tha)
     - [System Temperature](#sys-temp)
     - [PIR motion detection](#pir)
-    - [Luminosity](#luminosity)
+    - [Light intensity](#lux)
     - [Buzzer](#buzzer)
     - [Wiegand](#wiegand)
     - [1-Wire](#1wire)
@@ -131,10 +131,11 @@ You can read and/or write to these files to configure, monitor and control your 
 |status|R|0|PIR sensor at rest|
 |status|R|1|PIR sensor detecting motion|
 
+### <a name="lux"></a>Light intensity - `/sys/class/exosensepi/lux/`
 
-### <a name="luminosity"></a>Luminosity - `/sys/class/exosensepi/lux/`
-
-**TODO**
+|File|R/W|Value|Description|
+|----|:---:|:-:|-----------|
+|lux|R|*val*|Light intensity (lx/100)|
 
 ### <a name="buzzer"></a>Buzzer
 
