@@ -1,0 +1,17 @@
+pcm.dmic_hw {
+        type hw
+        card exosensepimic
+        channels 2
+        format S32_LE
+}
+
+pcm.dmic_sv {
+        type softvol
+        slave.pcm dmic_hw
+        control {
+                name "Boost Capture Volume"
+                card exosensepimic
+        }
+        min_dB -3.0
+        max_dB 30.0
+}
