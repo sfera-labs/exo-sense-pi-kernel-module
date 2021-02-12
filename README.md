@@ -10,9 +10,10 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [Digital I/O DTx](#digital-io)
     - [Temperature, Humidity, Air quality](#tha)
     - [System Temperature](#sys-temp)
+    - [PIR motion detection](#pir)
+    - [Luminosity](#luminosity)
     - [Buzzer](#buzzer)
     - [Wiegand](#wiegand)
-    - [PIR motion detection](#pir)
     - [1-Wire](#1wire)
 
 ## <a name="install"></a>Compile and Install
@@ -123,6 +124,18 @@ You can read and/or write to these files to configure, monitor and control your 
 
 **TODO** Replace u9/u16 names
 
+### <a name="pir"></a>PIR motion detection - `/sys/class/exosensepi/pir/`
+
+|File|R/W|Value|Description|
+|----|:---:|:-:|-----------|
+|status|R|0|PIR sensor at rest|
+|status|R|1|PIR sensor detecting motion|
+
+
+### <a name="luminosity"></a>Luminosity - `/sys/class/exosensepi/lux/`
+
+**TODO**
+
 ### <a name="buzzer"></a>Buzzer
 
 The buzzer can be controlled via simple ON/OFF commands or via PWM to produce tones variations.
@@ -171,13 +184,6 @@ The following properties can be used to improve noise detection and filtering. T
 |noise|R|12/13|Concurrent movement on both D0/D1 lines|
 |noise|R|14|Pulse too short|
 |noise|R|15|Pulse too long|
-
-### <a name="pir"></a>PIR motion detection - `/sys/class/exosensepi/pir/`
-
-|File|R/W|Value|Description|
-|----|:---:|:-:|-----------|
-|status|R|0|PIR sensor at rest|
-|status|R|1|PIR sensor detecting motion|
 
 ### <a name="microphone"></a>Microphone
 
