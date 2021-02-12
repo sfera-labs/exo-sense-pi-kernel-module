@@ -14,6 +14,7 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [Light intensity](#lux)
     - [Buzzer](#buzzer)
     - [Wiegand](#wiegand)
+    - [Microphone](#microphone)
     - [1-Wire](#1wire)
 
 ## <a name="install"></a>Compile and Install
