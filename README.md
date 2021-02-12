@@ -2,7 +2,7 @@
 
 Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
 
-## Compile and Install
+## <a name="install"></a>Compile and Install
 
 If you don't have git installed:
 
@@ -44,7 +44,7 @@ Reboot:
 
     sudo reboot
 
-## Usage
+## <a name="usage"></a>Usage
 
 After installing the module, you will find all the available devices under the directory `/sys/class/exosensepi/`.
 
@@ -52,7 +52,7 @@ The following paragraphs list all the possible devices (directories) and files c
 
 You can read and/or write to these files to configure, monitor and control your Exo Sense Pi.
 
-### LED - `/sys/class/exosensepi/led/`
+### <a name="led"></a>LED - `/sys/class/exosensepi/led/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
@@ -62,14 +62,14 @@ You can read and/or write to these files to configure, monitor and control your 
 |blink|W|*t*|LED on for *t* ms|
 |blink|W|*ton* *toff* *rep*|LED blink *rep* times with *ton*/*toff* ms periods. E.g. "200 50 3"|
 
-### Digital Inputs - `/sys/class/exosensepi/digital_in/`
+### <a name="digital-in"></a>Digital Inputs - `/sys/class/exosensepi/digital_in/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
 |di*N*|R|1|Digital input *N* high|
 |di*N*|R|0|Digital input *N* low|
 
-### Digital Output - `/sys/class/exosensepi/digital_out/`
+### <a name="digital-out"></a>Digital Output - `/sys/class/exosensepi/digital_out/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
@@ -77,7 +77,7 @@ You can read and/or write to these files to configure, monitor and control your 
 |do1|R/W|1|Digital output 1 closed|
 |do1|W|F|Flip digital output 1's state|
 
-### Digital I/O DTx - `/sys/class/exosensepi/digital_io/`
+### <a name="digital-io"></a>Digital I/O DTx - `/sys/class/exosensepi/digital_io/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
@@ -87,7 +87,7 @@ You can read and/or write to these files to configure, monitor and control your 
 |dt*N*|R(/W)|0|DT *N* (1 - 4) line low. Writable only in output mode|
 |dt*N*|R(/W)|1|DT *N* (1 - 4) line high. Writable only in output mode|
 
-### Temperature, Humidity, Air quality - `/sys/class/exosensepi/tha/`
+### <a name="tha"></a>Temperature, Humidity, Air quality - `/sys/class/exosensepi/tha/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
@@ -97,7 +97,7 @@ You can read and/or write to these files to configure, monitor and control your 
 
 **TODO** Calibration procedure documentation
 
-### System Temperature - `/sys/class/exosensepi/sys_temp/`
+### <a name="sys-temp"></a>System Temperature - `/sys/class/exosensepi/sys_temp/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
@@ -106,11 +106,11 @@ You can read and/or write to these files to configure, monitor and control your 
 
 **TODO** Replace u9/u16 names
 
-### Buzzer
+### <a name="buzzer"></a>Buzzer
 
 The buzzer can be controlled via simple ON/OFF commands or via PWM to produce tones variations.
 
-#### ON/OFF - `/sys/class/exosensepi/buzzer/`
+#### <a name="buzzer-onoff"></a>ON/OFF - `/sys/class/exosensepi/buzzer/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
@@ -120,7 +120,7 @@ The buzzer can be controlled via simple ON/OFF commands or via PWM to produce to
 |beep|W|*t*|Buzzer on for *t* ms|
 |beep|W|*ton* *toff* *rep*|Buzzer beep *rep* times with *ton*/*toff* ms periods. E.g. "200 50 3"|
 
-#### PWM control
+#### <a name="buzzer-pwm"></a>PWM control
 
 To set up PWM control write `1` to `/sys/class/pwm/pwmchip0/export`, e.g.:
 
@@ -130,7 +130,7 @@ Once set, use `/sys/class/pwm/pwmchip0/pwm1/period` and `/sys/class/pwm/pwmchip0
 
 Activate/deactivate the buzzer by writing `1`/`0` to `/sys/class/pwm/pwmchip0/pwm1/enable`. You can modify period and duty-cycle values while the buzzer is active. 
 
-### Wiegand - `/sys/class/exosensepi/wiegand/`
+### <a name="wiegand"></a>Wiegand - `/sys/class/exosensepi/wiegand/`
 
 You can use the DT lines as a Wiegand interface for a keypad or card reader. Connect DT1/DT2 respctively to the D0/D1 lines of the Wiegand device.
 
@@ -155,14 +155,14 @@ The following properties can be used to improve noise detection and filtering. T
 |noise|R|14|Pulse too short|
 |noise|R|15|Pulse too long|
 
-### PIR motion detection - `/sys/class/exosensepi/pir/`
+### <a name="pir"></a>PIR motion detection - `/sys/class/exosensepi/pir/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
 |status|R|0|PIR sensor at rest|
 |status|R|1|PIR sensor detecting motion|
 
-### Audio
+### <a name="microphone"></a>Microphone
 
 The I2S MEMS microphone can be used with the standard ALSA drivers.
 
@@ -179,3 +179,7 @@ Record a WAV audio file:
     arecord -D plughw:1 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
 
 **TODO** SW volume control
+
+### <a name="1wire"></a>1-Wire
+
+**TODO**
