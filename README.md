@@ -2,6 +2,19 @@
 
 Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
 
+- [Compile and Install](#install)
+- [Usage](#usage)
+    - [LED](#led)
+    - [Digital Inputs](#digital-in)
+    - [Digital Output](#digital-out)
+    - [Digital I/O DTx](#digital-io)
+    - [Temperature, Humidity, Air quality](#tha)
+    - [System Temperature](#sys-temp)
+    - [Buzzer](#buzzer)
+    - [Wiegand](#wiegand)
+    - [PIR motion detection](#pir)
+    - [1-Wire](#1wire)
+
 ## <a name="install"></a>Compile and Install
 
 If you don't have git installed:
@@ -168,7 +181,7 @@ The I2S MEMS microphone can be used with the standard ALSA drivers.
 
 Run `arecord -l` to check the microphone is available:
 
-    pi@raspberrypi:~ $ arecord -l
+    $ arecord -l
     **** List of CAPTURE Hardware Devices ****
     card 1: exosensepimic [exosensepi-mic], device 0: bcm2835-i2s-ics43432-hifi ics43432-hifi-0 [bcm2835-i2s-ics43432-hifi ics43432-hifi-0]
       Subdevices: 1/1
@@ -182,4 +195,11 @@ Record a WAV audio file:
 
 ### <a name="1wire"></a>1-Wire
 
-**TODO**
+If 1-wire is configured on one of the DT inputs, you will find the list of connected 1-Wire sensors' IDs in `/sys/bus/w1/devices/` with format `28-XXXXXXXXXXXX`.    
+To get the measured temperature read the file `w1_slave` under the sensor's directory, e.g.:
+
+    $ cat /sys/bus/w1/devices/28-XXXXXXXXXXXX/w1_slave 
+    25 01 55 00 7f ff 0c 0c 08 : crc=08 YES
+    25 01 55 00 7f ff 0c 0c 08 t=18312
+    
+At the end of the first line you will read `YES` if the communication succeded and the read temperature value will be reported at the end of the second line expressed in &deg;C/1000.
