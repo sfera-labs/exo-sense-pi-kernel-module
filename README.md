@@ -43,6 +43,10 @@ Compile the Device Tree and install it:
 Add to `/boot/config.txt` the following line:
 
     dtoverlay=exosensepi
+    
+If you want to use DT1 as 1-Wire bus, add this line too:
+
+    dtoverlay=w1-gpio
 
 Optionally, to be able to use the `/sys/class/exosensepi/` files not as super user, create a new group "exosensepi" and set it as the module owner group by adding an udev rule:
 
