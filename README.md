@@ -205,7 +205,7 @@ Record a WAV audio file:
 
 ### <a name="1wire"></a>1-Wire
 
-If 1-wire is configured on one of the DT inputs, you will find the list of connected 1-Wire sensors' IDs in `/sys/bus/w1/devices/` with format `28-XXXXXXXXXXXX`.    
+If 1-wire is configured, you will find the list of connected 1-Wire sensors' IDs in `/sys/bus/w1/devices/` with format `28-XXXXXXXXXXXX`.    
 To get the measured temperature read the file `w1_slave` under the sensor's directory, e.g.:
 
     $ cat /sys/bus/w1/devices/28-XXXXXXXXXXXX/w1_slave 
