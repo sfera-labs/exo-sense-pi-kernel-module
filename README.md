@@ -198,11 +198,24 @@ Run `arecord -l` to check the microphone is available:
       Subdevices: 1/1
       Subdevice #0: subdevice #0
 
-Record a WAV audio file:
+Record a WAV audio file (stop with <kbd>Ctrl</kbd> + <kbd>C</kbd>):
 
     arecord -D plughw:1 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
 
-**TODO** SW volume control
+You can add software volume control with alsamixer; to this end, copy the `asoundrc` to `~/.asoundrc`:
+
+    cp asoundrc ~/.asoundrc
+
+then run `arecord` once and stop it (<kbd>Ctrl</kbd> + <kbd>C</kbd>):
+
+    arecord -D plughw:1 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
+
+Now run `alsamixer` and, press <kbd>F6</kbd> to open the sound card selector and select `exosensepi-mic`.   
+Press <kbd>F4</kbd> to select the "Capture" view , adjust the volume with the up/down arrow keys and press <kbd>Esc</kbd> to save and exit.
+
+You can now record from the `dmic_sv` device with adjusted volume:
+
+    arecord -D dmic_sv -c2 -r 44100 -f S32_LE -t wav -V mono -v rec-vol.wav
 
 ### <a name="1wire"></a>1-Wire
 
