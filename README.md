@@ -120,10 +120,8 @@ You can read and/or write to these files to configure, monitor and control your 
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|u9|R|*val*|Temperature value from sensor U9 (&deg;C/100)|
-|u16|R|*val*|Temperature value from sensor U16 (&deg;C/100)|
-
-**TODO** Replace u9/u16 names
+|t1|R|*val*|Temperature value from sensor T1 (&deg;C/100)|
+|t2|R|*val*|Temperature value from sensor T2 (&deg;C/100)|
 
 ### <a name="pir"></a>PIR motion detection - `/sys/class/exosensepi/pir/`
 

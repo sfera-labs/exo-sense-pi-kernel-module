@@ -439,7 +439,7 @@ static struct DeviceAttrBean devAttrBeansSysTemp[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "u9",
+				.name = "t2",
 				.mode = 0440,
 			},
 			.show = devAttrLm75aU9_show,
@@ -450,7 +450,7 @@ static struct DeviceAttrBean devAttrBeansSysTemp[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "u16",
+				.name = "t1",
 				.mode = 0440,
 			},
 			.show = devAttrLm75aU16_show,
