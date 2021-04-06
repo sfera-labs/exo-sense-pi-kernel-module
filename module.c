@@ -1,5 +1,5 @@
 /*
- * exosensepi
+ * Exo Sense Pi kernel module
  *
  *     Copyright (C) 2020-2021 Sfera Labs S.r.l.
  *
@@ -914,21 +914,18 @@ void sensirion_sleep_usec(uint32_t useconds) {
 }
 
 static int16_t lm75aRead(struct i2c_client *client, int32_t *temp) {
-	int16_t val;
-	uint8_t data[2];
-
 	if (client == NULL) {
 		return -ENODEV;
 	}
 
-	val = i2c_smbus_read_i2c_block_data(client, 0, 2, data);
+	*temp = i2c_smbus_read_word_data(client, 0);
 
-	if (val != 2) {
-		return -EIO;
+	if (*temp < 0) {
+		return *temp;
 	}
 
-	val = ((data[0] << 8) & 0xff00) + (data[1] & 0x80);
-	*temp = ((int32_t) val) * 100 / 256;
+	*temp = ((*temp & 0xff) << 8) + ((*temp >> 8) & 0xe0);
+	*temp = ((int16_t) *temp) * 100 / 256;
 
 	return 0;
 }
@@ -1094,9 +1091,8 @@ static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
 static ssize_t opt3001_show(struct device* dev,
 		struct device_attribute* attr,
 		char *buf) {
-	int16_t res, man, exp;
-	uint8_t data[2];
-	int32_t lux;
+	int32_t res;
+	int16_t man, exp;
 
 	if (opt3001_i2c_client == NULL) {
 		return -ENODEV;
@@ -1106,21 +1102,19 @@ static ssize_t opt3001_show(struct device* dev,
 		return -EBUSY;
 	}
 
-	res = i2c_smbus_read_i2c_block_data(opt3001_i2c_client, 0, 2, data);
+	res = i2c_smbus_read_word_data(opt3001_i2c_client, 0);
 
 	exosensepi_i2c_unlock();
 
-	if (res != 2) {
-		return -EIO;
+	if (res < 0) {
+		return res;
 	}
 
-	man = ((data[0] << 8) & 0xf00) + (data[1] & 0xff);
-	exp = (data[0] >> 4) & 0xf;
-	lux = man * (1 << exp);
+	man = ((res & 0xf) << 8) + ((res >> 8) & 0xff);
+	exp = (res >> 4) & 0xf;
+	res = man * (1 << exp);
 
-	// TODO test and return lux only
-
-	return sprintf(buf, "%d %d %d\n", man, exp, lux);
+	return sprintf(buf, "%d\n", res);
 }
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
@@ -1455,8 +1449,7 @@ static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
 
 static int exosensepi_i2c_probe(struct i2c_client *client,
 		const struct i2c_device_id *id) {
-	int16_t res;
-	uint8_t data[2];
+	uint16_t conf;
 	int i;
 	if (client->addr == 0x44) {
 		sht40_i2c_client = client;
@@ -1468,13 +1461,13 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 		lm75aU16_i2c_client = client;
 	} else if (client->addr == 0x45) {
 		opt3001_i2c_client = client;
-		// TODO test
-		data[0] = 0xcc;
-		data[1] = 0x10;
+		// Setting configuration register to 0xCC10 (default = 0xC810):
+		// all default values but M[1:0], set to 10b = continuous conversions
+		// M[1:0] defaults to 00b = shutdown
+		// bytes order inverted in i2c_smbus_write_word_data()
+		conf = 0x10cc;
 		for (i = 0; i < 3; i++) {
-			printk(KERN_INFO "exosensepi: - | opt3001_i2c_client config\n"); // TODO remove
-			if (!i2c_smbus_write_i2c_block_data(opt3001_i2c_client, 1, 2,
-					data)) {
+			if (!i2c_smbus_write_word_data(opt3001_i2c_client, 1, conf)) {
 				break;
 			}
 		}
