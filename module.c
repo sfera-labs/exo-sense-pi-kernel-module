@@ -165,7 +165,7 @@ static bool dt1enabled = false;
 static bool dt2enabled = false;
 
 static int tmpCalibM = -1000;
-static int tmpCalibB = -300;
+static int tmpCalibB = -3000;
 
 static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 	1970, 1955, 1941, 1927, 1912, 1898, 1885, 1871, 1857, 1843, 1830, 1816,
@@ -963,10 +963,11 @@ static int16_t thReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
 	// tmpCalibB [°C/100]
 	// tmpCalibM [1/1000]
 
-	// 100 * t [°C/1000] = 1000 * t [°C/100]
-	// tmpCalibM [1/1000] * dt [°C/100] = 1000 * tmpCalibM * dt [°C/100]
-	// 1000 * tmpCalibB [°C/100]
-	*tCal = ((100 * (*t)) + (tmpCalibM * (*dt)) + (1000 * tmpCalibB)); // 1000 * [°C/100]
+	*tCal = (
+			(100 * (*t)) // 100 * t [°C/1000] = t [°C/100000]
+			+ (tmpCalibM * (*dt)) // tmpCalibM [1/1000] * dt [°C/100] = tmpCalibM * 1000 * dt [°C/100] = tmpCalibM * dt [°C/100000]
+					+ (100 * tmpCalibB) // 100 * tmpCalibB [°C/1000] = tmpCalibB [°C/100000]
+			);// [°C/100000]
 	*tCal = DIV_ROUND_CLOSEST(*tCal, 1000); // [°C/100]
 
 	*t /= 10; // [°C/100]
@@ -982,6 +983,11 @@ static int16_t thReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
 	}
 	rhIdx = tOff - RH_ADJ_MIN_TEMP_OFFSET;
 	*rhCal = (*rh) * RH_ADJ_FACTOR / rhAdjLookup[rhIdx];
+	if (*rhCal > 10000) {
+		*rhCal = 10000;
+	} else if (*rhCal < 0) {
+		*rhCal = 0;
+	}
 
 	return 0;
 }
