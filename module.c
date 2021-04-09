@@ -164,6 +164,7 @@ static VocAlgorithmParams voc_algorithm_params;
 static bool dt1enabled = false;
 static bool dt2enabled = false;
 
+static int tmpCalibC = -150;
 static int tmpCalibM = -1000;
 static int tmpCalibB = -3000;
 
@@ -960,6 +961,7 @@ static int16_t thReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
 	// t [°C/1000]
 	// rh [%/1000]
 	// t9,t16,dt [°C/100]
+	// tmpCalibC [°C/100]
 	// tmpCalibB [°C/100]
 	// tmpCalibM [1/1000]
 
@@ -968,7 +970,7 @@ static int16_t thReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
 			+ (tmpCalibM * (*dt)) // tmpCalibM [1/1000] * dt [°C/100] = tmpCalibM * 1000 * dt [°C/100] = tmpCalibM * dt [°C/100000]
 					+ (100 * tmpCalibB) // 100 * tmpCalibB [°C/1000] = tmpCalibB [°C/100000]
 			);// [°C/100000]
-	*tCal = DIV_ROUND_CLOSEST(*tCal, 1000); // [°C/100]
+	*tCal = DIV_ROUND_CLOSEST(*tCal, 1000) + tmpCalibC; // [°C/100]
 
 	*t /= 10; // [°C/100]
 	*rh /= 10; // [%/100]
@@ -1042,20 +1044,25 @@ static ssize_t devAttrThaThv_show(struct device* dev,
 
 static ssize_t devAttrThaCalib_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, "%d %d\n", tmpCalibM, tmpCalibB);
+	return sprintf(buf, "%d %d %d\n", tmpCalibC, tmpCalibM, tmpCalibB);
 }
 
 static ssize_t devAttrThaCalib_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count) {
-	long m, b;
+	long c, m, b;
 	char *end = NULL;
 
-	m = simple_strtol(buf, &end, 10);
+	c = simple_strtol(buf, &end, 10);
+	if (++end >= buf + count) {
+		return -EINVAL;
+	}
+	m = simple_strtol(end, &end, 10);
 	if (++end >= buf + count) {
 		return -EINVAL;
 	}
 	b = simple_strtol(end, &end, 10);
 
+	tmpCalibC = c;
 	tmpCalibM = m;
 	tmpCalibB = b;
 
