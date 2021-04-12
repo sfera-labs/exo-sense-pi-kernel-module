@@ -59,6 +59,12 @@ and add your user to the group, e.g. for user "pi":
 
     sudo usermod -a -G exosensepi pi
 
+Install the calibration script and service:
+
+    sudo cp exosensepi-calibrate@.service /lib/systemd/system/
+    sudo cp exosensepi-calibrate.py /usr/local/bin/
+    sudo chmod +x /usr/local/bin/exosensepi-calibrate.py
+
 Reboot:
 
     sudo reboot
@@ -114,7 +120,40 @@ You can read and/or write to these files to configure, monitor and control your 
 |temp_rh_voc|R|*s* *t* *tCal* *rh* *rhCal* *voc* *vocIdx*|Temperature, humidity and air quality values. *s*, *t*, *tCal*, *rh*, *rhCal* are as above; *voc* is the raw value from the Volatile Organic Compound (VOC) sensor; *vocIdx* is the VOC index which represents an air quality value on a scale from 0 to 500 where a lower value represents cleaner air and a value of 100 represent the typical air composition over the past 24h. To have reliable VOC index values, read this file continuously with intervals of 1 second|
 |temp_calib|R/W|*C* *M* *B*|Temperature calibration parameters (see below)|
 
-**TODO** Calibration procedure documentation
+#### <a name="tha-calibration"></a>Calibration
+
+Exo Sense Pi produces internal heat that influences its sensors readings. To compensate, the kernel module applies a tranformation to the values reported by the temperature sensor based on the *C*, *M*, and *B* parameters set on `/sys/class/exosensepi/tha/temp_calib`.    
+The compensated temperature values are, in turn, used to adjust humidity and VOC values.
+
+The *M* and *B* parameters are computed by the calibration procedure described below. The *C* parameter is a user-defined temperature offset (&deg;C/100, positive or negative) to be added to the calibrated temperature value to conpensate for external factors that might influence Exo Sense Pi.
+
+To perform the calibration procedure, (re-)enable the `exosensepi-calibrate` service as follows:
+
+    sudo systemctl disable exosensepi-calibrate@
+    sudo systemctl enable exosensepi-calibrate@$(systemd-escape -- 'C_PARAM').service
+
+where `C_PARAM` is the *C* temperature offset (&deg;C/100) you want to apply. For instance, for -2.3&deg;C:
+
+    sudo systemctl enable exosensepi-calibrate@$(systemd-escape -- '-230').service
+
+Shut down (`sudo shutdown now`) the Pi and remove power. Wait for the module to cool off (about 1 hour) and power it back on.
+
+The calibration procedure will start automatically. You will hear a short beep when it starts and can monitor its status with `systemctl`:
+
+    sudo systemctl status exosensepi-calibrate@*
+
+The process should finish in about 30 minutues, but could run for up to 80 minutes. When it completes you will hear 3 short beeps.
+
+After completion the script will write the computed parametrs to `/sys/class/exosensepi/tha/temp_calib` and automatically reconfigure the `exosensepi-calibrate` service to set these parameters at boot.
+
+If you want to manually modify the calibration parameters, (re-)enable the `exosensepi-calibrate` service as follows:
+
+    sudo systemctl disable exosensepi-calibrate@
+    sudo systemctl enable exosensepi-calibrate@$(systemd-escape -- 'C_PARAM M_PARAM B_PARAM').service
+
+setting your `C_PARAM`, `M_PARAM`, and `B_PARAM`. For instance:
+
+    sudo systemctl enable exosensepi-calibrate@$(systemd-escape -- '-200 -750 -2500').service
 
 ### <a name="sys-temp"></a>System Temperature - `/sys/class/exosensepi/sys_temp/`
 
