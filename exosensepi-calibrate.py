@@ -1,5 +1,16 @@
 #!/usr/bin/python3 -u
 
+# Exo Sense Pi calibration script
+#
+#     Copyright (C) 2020-2021 Sfera Labs S.r.l.
+#
+#     For information, visit https://www.sferalabs.cc
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# LICENSE.txt file for more details.
+
 import multiprocessing as mp
 import time
 import sys
@@ -157,7 +168,6 @@ def main():
 	print('Warming up CPUs...')
 	procs = cpus_warmup()
 
-	write_sysfs_file('buzzer/beep', '100 100 2')
 	time.sleep(1)
 
 	print('Waiting for temperature to stabilize...')
