@@ -24,11 +24,6 @@
 #include "sensirion/sgp40/sgp40.h"
 #include "sensirion/sgp40_voc_index/sensirion_voc_algorithm.h"
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
-MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("1.0");
-
 #define GPIO_MODE_IN 1
 #define GPIO_MODE_OUT 2
 
@@ -40,6 +35,19 @@ MODULE_VERSION("1.0");
 #define RH_ADJ_MIN_TEMP_OFFSET (-100)
 #define RH_ADJ_MAX_TEMP_OFFSET (400)
 #define RH_ADJ_FACTOR (1000)
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
+MODULE_DESCRIPTION("Exo Sense Pi driver module");
+MODULE_VERSION("1.0");
+
+static int temp_calib_m = -1000;
+module_param(temp_calib_m, int, S_IRUGO);
+MODULE_PARM_DESC(temp_calib_m, " Temperature calibration param M");
+
+static int temp_calib_b = -3000;
+module_param(temp_calib_b, int, S_IRUGO);
+MODULE_PARM_DESC(temp_calib_b, " Temperature calibration param B");
 
 struct DeviceAttrBean {
 	struct device_attribute devAttr;
@@ -99,10 +107,10 @@ static ssize_t devAttrThaTh_show(struct device* dev,
 static ssize_t devAttrThaThv_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
 
-static ssize_t devAttrThaCalib_show(struct device* dev,
+static ssize_t devAttrThaTempOffset_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
 
-static ssize_t devAttrThaCalib_store(struct device* dev,
+static ssize_t devAttrThaTempOffset_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrLm75aU9_show(struct device* dev,
@@ -164,9 +172,7 @@ static VocAlgorithmParams voc_algorithm_params;
 static bool dt1enabled = false;
 static bool dt2enabled = false;
 
-static int tmpCalibC = -150;
-static int tmpCalibM = -1000;
-static int tmpCalibB = -3000;
+static int temp_offset = 0;
 
 static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 	1970, 1955, 1941, 1927, 1912, 1898, 1885, 1871, 1857, 1843, 1830, 1816,
@@ -425,11 +431,11 @@ static struct DeviceAttrBean devAttrBeansTha[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "temp_calib",
+				.name = "temp_offset",
 				.mode = 0660,
 			},
-			.show = devAttrThaCalib_show,
-			.store = devAttrThaCalib_store,
+			.show = devAttrThaTempOffset_show,
+			.store = devAttrThaTempOffset_store,
 		},
 	},
 
@@ -961,16 +967,16 @@ static int16_t thReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
 	// t [°C/1000]
 	// rh [%/1000]
 	// t9,t16,dt [°C/100]
-	// tmpCalibC [°C/100]
-	// tmpCalibB [°C/100]
-	// tmpCalibM [1/1000]
+	// temp_offset [°C/100]
+	// temp_calib_b [°C/100]
+	// temp_calib_m [1/1000]
 
 	*tCal = (
 			(100 * (*t)) // 100 * t [°C/1000] = t [°C/100000]
-			+ (tmpCalibM * (*dt)) // tmpCalibM [1/1000] * dt [°C/100] = tmpCalibM * 1000 * dt [°C/100] = tmpCalibM * dt [°C/100000]
-					+ (100 * tmpCalibB) // 100 * tmpCalibB [°C/1000] = tmpCalibB [°C/100000]
+			+ (temp_calib_m * (*dt)) // tmpCalibM [1/1000] * dt [°C/100] = tmpCalibM * 1000 * dt [°C/100] = tmpCalibM * dt [°C/100000]
+					+ (100 * temp_calib_b) // 100 * tmpCalibB [°C/1000] = tmpCalibB [°C/100000]
 			);// [°C/100000]
-	*tCal = DIV_ROUND_CLOSEST(*tCal, 1000) + tmpCalibC; // [°C/100]
+	*tCal = DIV_ROUND_CLOSEST(*tCal, 1000) + temp_offset; // [°C/100]
 
 	*t /= 10; // [°C/100]
 	*rh /= 10; // [%/100]
@@ -1042,29 +1048,22 @@ static ssize_t devAttrThaThv_show(struct device* dev,
 			voc_index);
 }
 
-static ssize_t devAttrThaCalib_show(struct device* dev,
+static ssize_t devAttrThaTempOffset_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, "%d %d %d\n", tmpCalibC, tmpCalibM, tmpCalibB);
+	return sprintf(buf, "%d\n", temp_offset);
 }
 
-static ssize_t devAttrThaCalib_store(struct device* dev,
+static ssize_t devAttrThaTempOffset_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count) {
-	long c, m, b;
-	char *end = NULL;
+	int ret;
+	long val;
 
-	c = simple_strtol(buf, &end, 10);
-	if (++end >= buf + count) {
-		return -EINVAL;
+	ret = kstrtol(buf, 10, &val);
+	if (ret < 0) {
+		return ret;
 	}
-	m = simple_strtol(end, &end, 10);
-	if (++end >= buf + count) {
-		return -EINVAL;
-	}
-	b = simple_strtol(end, &end, 10);
 
-	tmpCalibC = c;
-	tmpCalibM = m;
-	tmpCalibB = b;
+	temp_offset = val;
 
 	return count;
 }

@@ -19,7 +19,7 @@ import os
 TEMP_STABLE_TIMEOUT = 40 * 60
 TEMP_STABLE_MVNG_AVG_ITVL = 3 * 60
 TEMP_STABLE_READ_ITVL = 10
-TEMP_STABLE_DELTA = 0.1
+TEMP_STABLE_DELTA = 10 # TODO set 0.1
 
 SYSFS_DIR = '/sys/class/exosensepi/'
 
@@ -96,10 +96,10 @@ def wait_for_stable_temps():
 	T2_buff = []
 	for _ in range(TEMP_STABLE_TIMEOUT // TEMP_STABLE_READ_ITVL):
 		read_temps()
-		# print('- {} ----------'.format(_)) # TODO remove
-		# print_temps() # TODO remove
+		print('- {} ----------'.format(_)) # TODO remove
+		print_temps() # TODO remove
 		if len(TB_buff) == avg_n:
-			# print('+') # TODO remove
+			print('+') # TODO remove
 			TB_avg = sum(TB_buff) / avg_n
 			T1_avg = sum(T1_buff) / avg_n
 			T2_avg = sum(T2_buff) / avg_n
@@ -113,34 +113,18 @@ def wait_for_stable_temps():
 		TB_buff.append(TB)
 		T1_buff.append(T1)
 		T2_buff.append(T2)
-		time.sleep(TEMP_STABLE_READ_ITVL)
+		for _ in range(TEMP_STABLE_READ_ITVL):
+			write_sysfs_file('led/status', 'F')
+			time.sleep(1)
 	return False
 
-def set_temp_calib(C, M, B):
-	write_sysfs_file('tha/temp_calib', '{} {} {}'.format(C, M, B))
-	print('Calibration parameters set C={} M={} B={}'.format(C, M, B))
-
-def main():
+def calibrate():
 	global TB, T2, T1
 
-	print('Exo Sense Pi calibration - v1.0')
-
-	C = -150
-
-	if len(sys.argv) > 1:
-		C = int(sys.argv[1])
-
-	if len(sys.argv) > 3:
-		M = int(sys.argv[2])
-		B = int(sys.argv[3])
-		set_temp_calib(C, M, B)
-		return
-
 	try:
-		write_sysfs_file('buzzer/beep', '100')
+		os.remove('/etc/modprobe.d/exosensepi.conf')
 	except:
-		print('ERROR - No beep: is the kernel module enabled?')
-		return
+		pass
 
 	read_temps()
 	print_temps()
@@ -149,8 +133,7 @@ def main():
 
 	print('Waiting for temperature to stabilize...')
 	if not wait_for_stable_temps():
-		print('ERROR - Process timed out')
-		return
+		raise Exception('Process timed out')
 
 	print_temps()
 
@@ -158,12 +141,10 @@ def main():
 	DT1 = T1 - T2
 
 	if E1 >= 0:
-		print('ERROR - No temperature variation: E1={}'.format(E1))
-		return
+		raise Exception('No temperature variation: E1={}'.format(E1))
 
 	if DT1 <= 0:
-		print('ERROR - No internal temperature difference: DT1={}'.format(DT1))
-		return
+		raise Exception('No internal temperature difference: DT1={}'.format(DT1))
 
 	print('Warming up CPUs...')
 	procs = cpus_warmup()
@@ -180,8 +161,7 @@ def main():
 		p.join()
 
 	if not ok:
-		print('ERROR - Process timed out')
-		return
+		raise Exception('Process timed out')
 
 	print_temps()
 
@@ -189,12 +169,10 @@ def main():
 	DT2 = T1 - T2
 
 	if E2 >= E1:
-		print('ERROR - No temperature variation: E1={} E2={}'.format(E1, E2))
-		return
+		raise Exception('No temperature variation: E1={} E2={}'.format(E1, E2))
 
 	if DT2 <= DT1:
-		print('ERROR - No internal temperature difference: DT1={} DT2={}'.format(DT1, DT2))
-		return
+		raise Exception('No internal temperature difference: DT1={} DT2={}'.format(DT1, DT2))
 
 	M = (E2 - E1) / (DT2 - DT1)
 	B = E1 - M * DT1
@@ -202,11 +180,32 @@ def main():
 	M = int(M * 1000)
 	B = int(B * 1000)
 
-	set_temp_calib(C, M, B)
-	write_sysfs_file('buzzer/beep', '100 100 3')
+	f = open('/etc/modprobe.d/exosensepi.conf', 'w')
+	f.write('options exosensepi temp_calib_m={} temp_calib_b={}'.format(M, B))
+	f.close()
 
-	os.system("sudo systemctl disable exosensepi-calibrate@")
-	os.system("sudo systemctl enable exosensepi-calibrate@$(systemd-escape -- '{} {} {}').service".format(C, M, B))
+	print('Calibration params set: M={} B={}'.format(M, B))
 
 if __name__ == '__main__':
-	main()
+	try:
+		print('Exo Sense Pi calibration - v1.0')
+
+		try:
+			write_sysfs_file('led/status', '0')
+			write_sysfs_file('buzzer/beep', '100')
+		except:
+			print('\n*** Is the kernel module enabled? ***\n')
+			raise
+
+		calibrate()
+
+		os.system("sudo systemctl disable exosensepi-calibrate")
+		write_sysfs_file('led/status', '1')
+	except:
+		try:
+			write_sysfs_file('led/status', '0')
+		except:
+			pass
+		raise
+	finally:
+		write_sysfs_file('buzzer/beep', '100 100 3')

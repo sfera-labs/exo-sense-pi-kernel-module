@@ -3,8 +3,7 @@ Description=Exo Sense Pi calibration service
 
 [Service]
 Type=oneshot
-Environment="ARGS=%I"
-ExecStart=/usr/local/bin/exosensepi-calibrate.py $ARGS
+ExecStart=/usr/local/bin/exosensepi-calibrate.py
 RemainAfterExit=yes
 TimeoutSec=7200
 
