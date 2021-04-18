@@ -3,6 +3,7 @@
 Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
 
 - [Compile and Install](#install)
+- [Calibration](#tha-calibration)
 - [Usage](#usage)
     - [LED](#led)
     - [Digital Inputs](#digital-in)
@@ -80,12 +81,15 @@ To perform the calibration procedure, enable the `exosensepi-calibrate` service:
 
 Shut down (`sudo shutdown now`) the Pi and remove power. Wait for the module to cool off (about 1 hour) and power it back on.
 
-The calibration procedure will start automatically. You will hear a short beep when it starts and the blue LED will blink during the process.
+The calibration procedure will start automatically. You will hear a short beep when it starts and the blue LED will blink while running.
 
-The process should finish in about 30 minutues, but could run for up to 80 minutes. When it completes you will hear 3 short beeps.    
-If the blue LED is stable on, the process succeded.
+The process should finish in about 30 minutues, but could run for up to 80 minutes. When it completes you will hear 3 short beeps and the blue LED will be steady on. The calibration service gets automatically disabled after completion so it won't run again on the next boot.
 
-TODO complete
+You will find the computed calibration parameters `temp_calib_m` and `temp_calib_b` set in `/etc/modprobe.d/exosensepi.conf`:
+
+    options exosensepi temp_calib_m=<M> temp_calib_b=<B>
+
+Reboot Exo Sense Pi to have the module reload and apply the calibration parameters.
 
 ## <a name="usage"></a>Usage
 
