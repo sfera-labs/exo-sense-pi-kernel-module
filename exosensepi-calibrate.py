@@ -96,10 +96,7 @@ def wait_for_stable_temps():
 	T2_buff = []
 	for _ in range(TEMP_STABLE_TIMEOUT // TEMP_STABLE_READ_ITVL):
 		read_temps()
-		# print('- {} ----------'.format(_)) # TODO remove
-		# print_temps() # TODO remove
 		if len(TB_buff) == avg_n:
-			# print('+') # TODO remove
 			TB_avg = sum(TB_buff) / avg_n
 			T1_avg = sum(T1_buff) / avg_n
 			T2_avg = sum(T2_buff) / avg_n
