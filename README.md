@@ -128,11 +128,11 @@ You can read and/or write to these files to configure, monitor and control your 
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|dt*N*_mode|R/W|x|DT *N* (1 - 4) line not controlled by kernel module|
-|dt*N*_mode|R/W|in|DT *N* (1 - 4) line set as input|
-|dt*N*_mode|R/W|out|DT *N* (1 - 4) line set as output|
-|dt*N*|R(/W)|0|DT *N* (1 - 4) line low. Writable only in output mode|
-|dt*N*|R(/W)|1|DT *N* (1 - 4) line high. Writable only in output mode|
+|dt*N*_mode|R/W|x|DT *N* (1 - 2) line not controlled by kernel module|
+|dt*N*_mode|R/W|in|DT *N* (1 - 2) line set as input|
+|dt*N*_mode|R/W|out|DT *N* (1 - 2) line set as output|
+|dt*N*|R(/W)|0|DT *N* (1 - 2) line low. Writable only in output mode|
+|dt*N*|R(/W)|1|DT *N* (1 - 2) line high. Writable only in output mode|
 
 ### <a name="tha"></a>Temperature, Humidity, Air quality - `/sys/class/exosensepi/tha/`
 
