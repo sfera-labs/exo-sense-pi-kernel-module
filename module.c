@@ -27,8 +27,8 @@
 #define GPIO_MODE_IN 1
 #define GPIO_MODE_OUT 2
 
-#define GPIO_DT1 4
-#define GPIO_DT2 5
+#define GPIO_TTL1 4
+#define GPIO_TTL2 5
 
 #define WIEGAND_MAX_BITS 64
 
@@ -95,10 +95,10 @@ static ssize_t devAttrGpio_store(struct device* dev,
 static ssize_t devAttrGpioBlink_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
-static ssize_t devAttrDtMode_show(struct device* dev,
+static ssize_t devAttrTtlMode_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
 
-static ssize_t devAttrDtMode_store(struct device* dev,
+static ssize_t devAttrTtlMode_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrThaTh_show(struct device* dev,
@@ -169,8 +169,8 @@ struct i2c_client *opt3001_i2c_client = NULL;
 struct mutex exosensepi_i2c_mutex;
 static VocAlgorithmParams voc_algorithm_params;
 
-static bool dt1enabled = false;
-static bool dt2enabled = false;
+static bool ttl1enabled = false;
+static bool ttl2enabled = false;
 
 static int temp_offset = 0;
 
@@ -212,11 +212,11 @@ static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 
 static struct WiegandBean w1 = {
 	.d0 = {
-		.gpio = GPIO_DT1,
+		.gpio = GPIO_TTL1,
 		.irqRequested = false,
 	},
 	.d1 = {
-		.gpio = GPIO_DT2,
+		.gpio = GPIO_TTL2,
 		.irqRequested = false,
 	},
 	.enabled = false,
@@ -338,51 +338,51 @@ static struct DeviceAttrBean devAttrBeansDigitalIO[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "dt1_mode",
+				.name = "ttl1_mode",
 				.mode = 0660,
 			},
-			.show = devAttrDtMode_show,
-			.store = devAttrDtMode_store,
+			.show = devAttrTtlMode_show,
+			.store = devAttrTtlMode_store,
 		},
-		.gpio = GPIO_DT1,
+		.gpio = GPIO_TTL1,
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "dt2_mode",
+				.name = "ttl2_mode",
 				.mode = 0660,
 			},
-			.show = devAttrDtMode_show,
-			.store = devAttrDtMode_store,
+			.show = devAttrTtlMode_show,
+			.store = devAttrTtlMode_store,
 		},
-		.gpio = GPIO_DT2,
+		.gpio = GPIO_TTL2,
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "dt1",
+				.name = "ttl1",
 				.mode = 0660,
 			},
 			.show = devAttrGpio_show,
 			.store = devAttrGpio_store,
 		},
 		.gpioMode = 0,
-		.gpio = GPIO_DT1,
+		.gpio = GPIO_TTL1,
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "dt2",
+				.name = "ttl2",
 				.mode = 0660,
 			},
 			.show = devAttrGpio_show,
 			.store = devAttrGpio_store,
 		},
 		.gpioMode = 0,
-		.gpio = GPIO_DT2,
+		.gpio = GPIO_TTL2,
 	},
 
 	{ }
@@ -762,7 +762,7 @@ static ssize_t devAttrGpioBlink_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrDtMode_show(struct device* dev,
+static ssize_t devAttrTtlMode_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
 	struct DeviceAttrBean* dab;
 	dab = devAttrGetBean(devGetBean(dev), attr);
@@ -778,7 +778,7 @@ static ssize_t devAttrDtMode_show(struct device* dev,
 	return sprintf(buf, "x\n");
 }
 
-static ssize_t devAttrDtMode_store(struct device* dev,
+static ssize_t devAttrTtlMode_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count) {
 	size_t ret;
 	int ai;
@@ -795,10 +795,10 @@ static ssize_t devAttrDtMode_store(struct device* dev,
 		return -EBUSY;
 	}
 
-	if (dab->gpio == GPIO_DT1) {
-		enabled = &dt1enabled;
-	} else if (dab->gpio == GPIO_DT2) {
-		enabled = &dt2enabled;
+	if (dab->gpio == GPIO_TTL1) {
+		enabled = &ttl1enabled;
+	} else if (dab->gpio == GPIO_TTL2) {
+		enabled = &ttl2enabled;
 	} else {
 		return -EFAULT;
 	}
@@ -1273,7 +1273,7 @@ static ssize_t devAttrWiegandEnabled_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count) {
 	bool enable;
 	int result = 0;
-	char reqName[] = "exosensepi_dtN";
+	char reqName[] = "exosensepi_ttN";
 
 	if (buf[0] == '0') {
 		enable = false;
@@ -1284,7 +1284,7 @@ static ssize_t devAttrWiegandEnabled_store(struct device* dev,
 	}
 
 	if (enable) {
-		if (dt1enabled || dt2enabled) {
+		if (ttl1enabled || ttl2enabled) {
 			return -EBUSY;
 		}
 

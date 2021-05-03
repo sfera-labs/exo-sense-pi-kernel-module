@@ -8,7 +8,7 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [LED](#led)
     - [Digital Inputs](#digital-in)
     - [Digital Output](#digital-out)
-    - [Digital I/O DTx](#digital-io)
+    - [Digital I/O TTLx](#digital-io)
     - [Temperature, Humidity, Air quality](#tha)
     - [System Temperature](#sys-temp)
     - [PIR motion detection](#pir)
@@ -47,7 +47,7 @@ Add to `/boot/config.txt` the following line:
 
     dtoverlay=exosensepi
     
-If you want to use DT1 as 1-Wire bus, add this line too:
+If you want to use TTL1 as 1-Wire bus, add this line too:
 
     dtoverlay=w1-gpio
 
@@ -72,7 +72,7 @@ Reboot:
 
 ## <a name="tha-calibration"></a>Calibration
 
-Exo Sense Pi produces internal heat that influences its sensors readings. To compensate, the kernel module applies a tranformation to the values reported by the temperature sensor based on calibration parameters computed by the procedure described below.    
+Exo Sense Pi produces internal heat that influences its sensors readings. To compensate, the kernel module applies a transformation to the values reported by the temperature sensor based on calibration parameters computed by the procedure described below.    
 The compensated temperature values are, in turn, used to adjust humidity and VOC values.
 
 To perform the calibration procedure, enable the `exosensepi-calibrate` service:
@@ -83,7 +83,7 @@ Shut down (`sudo shutdown now`) the Pi and remove power. Wait for the module to 
 
 The calibration procedure will start automatically. You will hear a short beep when it starts and the blue LED will blink while running.
 
-The process should finish in about 30 minutues, but could run for up to 80 minutes. When it completes you will hear 3 short beeps and the blue LED will be steady on. The calibration service gets automatically disabled after completion so it won't run again on the next boot.
+The process should finish in about 30 minutes, but could run for up to 80 minutes. When it completes you will hear 3 short beeps and the blue LED will be steady on. The calibration service gets automatically disabled after completion so it won't run again on the next boot.
 
 You will find the computed calibration parameters `temp_calib_m` and `temp_calib_b` set in `/etc/modprobe.d/exosensepi.conf`:
 
@@ -124,15 +124,15 @@ You can read and/or write to these files to configure, monitor and control your 
 |do1|R/W|1|Digital output 1 closed|
 |do1|W|F|Flip digital output 1's state|
 
-### <a name="digital-io"></a>Digital I/O DTx - `/sys/class/exosensepi/digital_io/`
+### <a name="digital-io"></a>Digital I/O TTLx - `/sys/class/exosensepi/digital_io/`
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|dt*N*_mode|R/W|x|DT *N* (1 - 2) line not controlled by kernel module|
-|dt*N*_mode|R/W|in|DT *N* (1 - 2) line set as input|
-|dt*N*_mode|R/W|out|DT *N* (1 - 2) line set as output|
-|dt*N*|R(/W)|0|DT *N* (1 - 2) line low. Writable only in output mode|
-|dt*N*|R(/W)|1|DT *N* (1 - 2) line high. Writable only in output mode|
+|ttl*N*_mode|R/W|x|TTL *N* (1 - 2) line not controlled by kernel module|
+|ttl*N*_mode|R/W|in|TTL *N* (1 - 2) line set as input|
+|ttl*N*_mode|R/W|out|TTL *N* (1 - 2) line set as output|
+|ttl*N*|R(/W)|0|TTL *N* (1 - 2) line low. Writable only in output mode|
+|ttl*N*|R(/W)|1|TTL *N* (1 - 2) line high. Writable only in output mode|
 
 ### <a name="tha"></a>Temperature, Humidity, Air quality - `/sys/class/exosensepi/tha/`
 
@@ -188,7 +188,7 @@ Activate/deactivate the buzzer by writing `1`/`0` to `/sys/class/pwm/pwmchip0/pw
 
 ### <a name="wiegand"></a>Wiegand - `/sys/class/exosensepi/wiegand/`
 
-You can use the DT lines as a Wiegand interface for a keypad or card reader. Connect DT1/DT2 respctively to the D0/D1 lines of the Wiegand device.
+You can use the TTL lines as a Wiegand interface for a keypad or card reader. Connect TTL1/TTL2 respctively to the D0/D1 lines of the Wiegand device.
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
