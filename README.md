@@ -219,13 +219,15 @@ Run `arecord -l` to check the microphone is available:
 
     $ arecord -l
     **** List of CAPTURE Hardware Devices ****
-    card 1: exosensepimic [exosensepi-mic], device 0: bcm2835-i2s-ics43432-hifi ics43432-hifi-0 [bcm2835-i2s-ics43432-hifi ics43432-hifi-0]
+    card 0: exosensepimic [exosensepi-mic], device 0: bcm2835-i2s-ics43432-hifi ics43432-hifi-0 [bcm2835-i2s-ics43432-hifi ics43432-hifi-0]
       Subdevices: 1/1
       Subdevice #0: subdevice #0
 
 Record a WAV audio file (stop with <kbd>Ctrl</kbd> + <kbd>C</kbd>):
 
-    arecord -D plughw:1 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
+    arecord -D plughw:0 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
+
+You may need to change the number after `plughw:` depending on the card number returned by `arecord -l` (e.g. `plughw:1`).
 
 You can add software volume control with alsamixer; to this end, copy the `asoundrc` file from this repo to `~/.asoundrc`:
 
@@ -233,7 +235,7 @@ You can add software volume control with alsamixer; to this end, copy the `asoun
 
 then run `arecord` once and stop it (<kbd>Ctrl</kbd> + <kbd>C</kbd>):
 
-    arecord -D plughw:1 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
+    arecord -D plughw:0 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
 
 Now run `alsamixer` and, press <kbd>F6</kbd> to open the sound card selector and select `exosensepi-mic`.   
 Press <kbd>F4</kbd> to select the "Capture" view , adjust the volume with the up/down arrow keys and press <kbd>Esc</kbd> to save and exit.
