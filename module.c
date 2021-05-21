@@ -795,6 +795,21 @@ static ssize_t devAttrGpio_store(struct device* dev,
 	return count;
 }
 
+static ssize_t devAttrGpioDeb_show(struct device* dev,
+		struct device_attribute* attr, char *buf) {
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrGpioDebMs_show(struct device* dev,
+		struct device_attribute* attr, char *buf) {
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrGpioDebMs_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count) {
+	return count;
+}
+
 static ssize_t devAttrGpioBlink_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count) {
 	int i;
