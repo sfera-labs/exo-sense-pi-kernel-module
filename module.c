@@ -363,7 +363,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.gpioMode = GPIO_MODE_IN,
 		.gpio = GPIO_DI1,
-		.debounce = true;
+		.debounce = true,
 	},
 
 	{
@@ -377,7 +377,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.gpioMode = GPIO_MODE_IN,
 		.gpio = GPIO_DI2,
-		.debounce = true;
+		.debounce = true,
 	},
 
 	{
