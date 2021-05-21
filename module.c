@@ -27,6 +27,16 @@
 #define GPIO_MODE_IN 1
 #define GPIO_MODE_OUT 2
 
+#define GPIO_LED 22
+#define GPIO_BUZZ 27
+
+#define GPIO_PIR 23
+
+#define GPIO_DO1 12
+
+#define GPIO_DI1 16
+#define GPIO_DI2 17
+
 #define GPIO_TTL1 4
 #define GPIO_TTL2 5
 
@@ -238,7 +248,7 @@ static struct DeviceAttrBean devAttrBeansLed[] = {
 			.store = devAttrGpio_store,
 		},
 		.gpioMode = GPIO_MODE_OUT,
-		.gpio = 22,
+		.gpio = GPIO_LED,
 	},
 
 	{
@@ -251,7 +261,7 @@ static struct DeviceAttrBean devAttrBeansLed[] = {
 			.store = devAttrGpioBlink_store,
 		},
 		.gpioMode = GPIO_MODE_OUT,
-		.gpio = 22,
+		.gpio = GPIO_LED,
 	},
 
 	{ }
@@ -268,7 +278,7 @@ static struct DeviceAttrBean devAttrBeansBuzzer[] = {
 			.store = devAttrGpio_store,
 		},
 		.gpioMode = GPIO_MODE_OUT,
-		.gpio = 27,
+		.gpio = GPIO_BUZZ,
 	},
 
 	{
@@ -281,7 +291,7 @@ static struct DeviceAttrBean devAttrBeansBuzzer[] = {
 			.store = devAttrGpioBlink_store,
 		},
 		.gpioMode = GPIO_MODE_OUT,
-		.gpio = 27,
+		.gpio = GPIO_BUZZ,
 	},
 
 	{ }
@@ -298,7 +308,7 @@ static struct DeviceAttrBean devAttrBeansDigitalOut[] = {
 			.store = devAttrGpio_store,
 		},
 		.gpioMode = GPIO_MODE_OUT,
-		.gpio = 12,
+		.gpio = GPIO_DO1,
 	},
 
 	{ }
@@ -315,7 +325,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.store = NULL,
 		},
 		.gpioMode = GPIO_MODE_IN,
-		.gpio = 16,
+		.gpio = GPIO_DI1,
 	},
 
 	{
@@ -328,7 +338,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.store = NULL,
 		},
 		.gpioMode = GPIO_MODE_IN,
-		.gpio = 17,
+		.gpio = GPIO_DI2,
 	},
 
 	{ }
@@ -399,7 +409,7 @@ static struct DeviceAttrBean devAttrBeansPir[] = {
 			.store = NULL,
 		},
 		.gpioMode = GPIO_MODE_IN,
-		.gpio = 23,
+		.gpio = GPIO_PIR,
 	},
 
 	{ }
