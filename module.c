@@ -102,6 +102,15 @@ static ssize_t devAttrGpio_show(struct device* dev,
 static ssize_t devAttrGpio_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
+static ssize_t devAttrGpioDeb_show(struct device* dev,
+		struct device_attribute* attr, char *buf);
+
+static ssize_t devAttrGpioDebMs_show(struct device* dev,
+		struct device_attribute* attr, char *buf);
+
+static ssize_t devAttrGpioDebMs_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
 static ssize_t devAttrGpioBlink_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
@@ -339,6 +348,54 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.gpioMode = GPIO_MODE_IN,
 		.gpio = GPIO_DI2,
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "di1_deb",
+				.mode = 0440,
+			},
+			.show = devAttrGpioDeb_show,
+			.store = NULL,
+		},
+		.gpioMode = GPIO_MODE_IN,
+		.gpio = GPIO_DI1,
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "di2_deb",
+				.mode = 0440,
+			},
+			.show = devAttrGpioDeb_show,
+			.store = NULL,
+		},
+		.gpioMode = GPIO_MODE_IN,
+		.gpio = GPIO_DI2,
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "di1_deb_ms",
+				.mode = 0660,
+			},
+			.show = devAttrGpioDebMs_show,
+			.store = devAttrGpioDebMs_store,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "di2_deb_ms",
+				.mode = 0660,
+			},
+			.show = devAttrGpioDebMs_show,
+			.store = devAttrGpioDebMs_store,
+		},
 	},
 
 	{ }
