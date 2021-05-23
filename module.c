@@ -46,6 +46,10 @@
 #define RH_ADJ_MAX_TEMP_OFFSET (400)
 #define RH_ADJ_FACTOR (1000)
 
+#define DEBOUNCE_STATE_NOT_DEFINED -1;
+#define DEBOUNCE_STATE_1 1;
+#define DEBOUNCE_STATE_0 0;
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
@@ -64,8 +68,11 @@ struct DeviceAttrBean {
 	int gpioMode;
 	int gpio;
 	bool invert;
-	bool debounce;
+	bool debounceOn;
+	char* debIrqDevName;
+	int debValue;
 	int debIrqNum;
+	struct timespec64 lastDebIrqTs;
 };
 
 struct DeviceBean {
@@ -363,7 +370,8 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.gpioMode = GPIO_MODE_IN,
 		.gpio = GPIO_DI1,
-		.debounce = true,
+		.debounceOn = true,
+		.debIrqDevName = "exosensepi_di1_deb",
 	},
 
 	{
@@ -377,7 +385,8 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.gpioMode = GPIO_MODE_IN,
 		.gpio = GPIO_DI2,
-		.debounce = true,
+		.debounceOn = true,
+		.debIrqDevName = "exosensepi_di2_deb",
 	},
 
 	{
@@ -1602,6 +1611,11 @@ static struct i2c_driver exosensepi_i2c_driver = {
 	.id_table = exosensepi_i2c_id,
 };
 
+static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id)
+{
+	return IRQ_HANDLED;
+}
+
 static void cleanup(void) {
 	int di, ai;
 
@@ -1617,6 +1631,9 @@ static void cleanup(void) {
 						&devices[di].devAttrBeans[ai].devAttr);
 				if (devices[di].devAttrBeans[ai].gpioMode != 0) {
 					gpio_free(devices[di].devAttrBeans[ai].gpio);
+				}
+				if (devices[di].devAttrBeans[ai].debounceOn){
+					free_irq(devices[di].devAttrBeans[ai].debIrqNum, NULL);
 				}
 				ai++;
 			}
@@ -1678,6 +1695,18 @@ static int __init exosensepi_init(void) {
 							devices[di].devAttrBeans[ai].gpio);
 					goto fail;
 				}
+			}
+			if (devices[di].devAttrBeans[ai].debounceOn){
+				devices[di].devAttrBeans[ai].debIrqNum = gpio_to_irq(devices[di].devAttrBeans[ai].gpio);
+				if (request_irq(devices[di].devAttrBeans[ai].debIrqNum,
+					(void *) gpio_deb_irq_handler,
+							IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+							devices[di].devAttrBeans[ai].debIrqDevName,
+							NULL)) {
+					printk("exosensepi: * | cannot register IRQ of %s in device %s\n", devices[di].devAttrBeans[ai].devAttr.attr.name, devices[di].name);
+					goto fail;
+				}
+				devices[di].devAttrBeans[ai].debValue = DEBOUNCE_STATE_NOT_DEFINED;
 			}
 			ai++;
 		}
