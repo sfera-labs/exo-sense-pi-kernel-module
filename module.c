@@ -63,16 +63,20 @@ static int temp_calib_b = -3000;
 module_param(temp_calib_b, int, S_IRUGO);
 MODULE_PARM_DESC(temp_calib_b, " Temperature calibration param B");
 
-struct DeviceAttrBean {
-	struct device_attribute devAttr;
-	int gpioMode;
-	int gpio;
-	bool invert;
+struct DebounceAttr {
 	bool debounceOn;
 	char* debIrqDevName;
 	int debValue;
 	int debIrqNum;
 	struct timespec64 lastDebIrqTs;
+};
+
+struct DeviceAttrBean {
+	struct device_attribute devAttr;
+	int gpioMode;
+	int gpio;
+	bool invert;
+	struct DebounceAttr debounceAttr;
 };
 
 struct DeviceBean {
@@ -370,8 +374,10 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.gpioMode = GPIO_MODE_IN,
 		.gpio = GPIO_DI1,
-		.debounceOn = true,
-		.debIrqDevName = "exosensepi_di1_deb",
+		.debounceAttr = {
+				.debounceOn = true,
+				.debIrqDevName = "exosensepi_di1_deb",
+		},
 	},
 
 	{
@@ -385,8 +391,10 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.gpioMode = GPIO_MODE_IN,
 		.gpio = GPIO_DI2,
-		.debounceOn = true,
-		.debIrqDevName = "exosensepi_di2_deb",
+		.debounceAttr = {
+				.debounceOn = true,
+				.debIrqDevName = "exosensepi_di2_deb",
+		},
 	},
 
 	{
@@ -1632,8 +1640,8 @@ static void cleanup(void) {
 				if (devices[di].devAttrBeans[ai].gpioMode != 0) {
 					gpio_free(devices[di].devAttrBeans[ai].gpio);
 				}
-				if (devices[di].devAttrBeans[ai].debounceOn){
-					free_irq(devices[di].devAttrBeans[ai].debIrqNum, NULL);
+				if (devices[di].devAttrBeans[ai].debounceAttr.debounceOn){
+					free_irq(devices[di].devAttrBeans[ai].debounceAttr.debIrqNum, NULL);
 				}
 				ai++;
 			}
@@ -1696,17 +1704,17 @@ static int __init exosensepi_init(void) {
 					goto fail;
 				}
 			}
-			if (devices[di].devAttrBeans[ai].debounceOn){
-				devices[di].devAttrBeans[ai].debIrqNum = gpio_to_irq(devices[di].devAttrBeans[ai].gpio);
-				if (request_irq(devices[di].devAttrBeans[ai].debIrqNum,
+			if (devices[di].devAttrBeans[ai].debounceAttr.debounceOn){
+				devices[di].devAttrBeans[ai].debounceAttr.debIrqNum = gpio_to_irq(devices[di].devAttrBeans[ai].gpio);
+				if (request_irq(devices[di].devAttrBeans[ai].debounceAttr.debIrqNum,
 					(void *) gpio_deb_irq_handler,
 							IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-							devices[di].devAttrBeans[ai].debIrqDevName,
+							devices[di].devAttrBeans[ai].debounceAttr.debIrqDevName,
 							NULL)) {
 					printk("exosensepi: * | cannot register IRQ of %s in device %s\n", devices[di].devAttrBeans[ai].devAttr.attr.name, devices[di].name);
 					goto fail;
 				}
-				devices[di].devAttrBeans[ai].debValue = DEBOUNCE_STATE_NOT_DEFINED;
+				devices[di].devAttrBeans[ai].debounceAttr.debValue = DEBOUNCE_STATE_NOT_DEFINED;
 			}
 			ai++;
 		}
