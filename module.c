@@ -81,7 +81,7 @@ struct DebounceAttr {
 	bool debounceOn;
 	const char* debIrqDevName;
 
-	int debValue;
+	int debPastValue;
 	int debIrqNum;
 	struct timespec64 lastDebIrqTs;
 	unsigned long debOnMinTime_usec;
@@ -211,6 +211,9 @@ static ssize_t devAttrWiegandPulseWidthMax_show(struct device* dev,
 
 static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
+
+static unsigned long to_usec(struct timespec64 *t);
+static unsigned long diff_usec(struct timespec64 *t1, struct timespec64 *t2);
 
 struct i2c_client *sht40_i2c_client = NULL;
 struct i2c_client *sgp40_i2c_client = NULL;
@@ -892,7 +895,33 @@ static ssize_t devAttrGpio_store(struct device* dev,
 
 static ssize_t devAttrGpioDeb_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, "\n");
+	struct timespec64 now;
+	unsigned long diff;
+	int actualGPIOStatus;
+	struct DeviceAttrBean* dab;
+
+	ktime_get_raw_ts64(&now);
+	dab = container_of(attr, struct DeviceAttrBean, devAttr);
+	diff = diff_usec((struct timespec64 *) &dab->debounceAttr.lastDebIrqTs, &now);
+	actualGPIOStatus = gpio_get_value(dab->gpio);
+	if (actualGPIOStatus){
+		if (diff >= dab->debounceAttr.debOnMinTime_usec) {
+			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n", diff, actualGPIOStatus);
+			return sprintf(buf, "%d\n", actualGPIOStatus);
+		}else{
+			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n", diff, dab->debounceAttr.debPastValue);
+			return sprintf(buf, "%d\n", dab->debounceAttr.debPastValue);
+		}
+	}else{
+		if (diff >= dab->debounceAttr.debOffMinTime_usec) {
+			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n", diff, actualGPIOStatus);
+			return sprintf(buf, "%d\n", actualGPIOStatus);
+		}else{
+			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n", diff, dab->debounceAttr.debPastValue);
+			return sprintf(buf, "%d\n", dab->debounceAttr.debPastValue);
+		}
+	}
+	return sprintf(buf, "%d\n", dab->debounceAttr.debPastValue);
 }
 
 static ssize_t devAttrGpioDebMs_show(struct device* dev,
@@ -1739,6 +1768,41 @@ static struct i2c_driver exosensepi_i2c_driver = {
 
 static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id)
 {
+	struct timespec64 now;
+	int di, ai;
+	unsigned long diff;
+	int actualGPIOStatus;
+
+	di = 0;
+	ktime_get_raw_ts64(&now);
+	while (devices[di].name != NULL) {
+		if (devices[di].pDevice && !IS_ERR(devices[di].pDevice)) {
+			ai = 0;
+			while (devices[di].devAttrBeans[ai].devAttr.attr.name != NULL) {
+				if (devices[di].devAttrBeans[ai].debounceAttr.debIrqNum == irq){
+					actualGPIOStatus = gpio_get_value(devices[di].devAttrBeans[ai].gpio);
+					diff = diff_usec((struct timespec64 *) &devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs, &now);
+					printk("BCDebug:\t - %s = %d - interrupt triggered with irq number %d\n", devices[di].devAttrBeans[ai].devAttr.attr.name, gpio_get_value(devices[di].devAttrBeans[ai].gpio), irq);
+
+					if (actualGPIOStatus){
+						if (diff >= devices[di].devAttrBeans[ai].debounceAttr.debOffMinTime_usec) {
+							devices[di].devAttrBeans[ai].debounceAttr.debPastValue = DEBOUNCE_STATE_0;
+							printk("BCDebug:\t - time diff = %lu usec, past value = %d\n", diff, devices[di].devAttrBeans[ai].debounceAttr.debPastValue);
+						}
+					}else{
+						if (diff >= devices[di].devAttrBeans[ai].debounceAttr.debOnMinTime_usec) {
+							devices[di].devAttrBeans[ai].debounceAttr.debPastValue = DEBOUNCE_STATE_1;
+							printk("BCDebug:\t - time diff = %lu usec, past value = %d\n", diff, devices[di].devAttrBeans[ai].debounceAttr.debPastValue);
+						}
+					}
+					ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs);
+				}
+				ai++;
+			}
+		}
+		di++;
+	}
+
 	return IRQ_HANDLED;
 }
 
@@ -1833,7 +1897,7 @@ static int __init exosensepi_init(void) {
 					goto fail;
 				}
 				ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs);
-				devices[di].devAttrBeans[ai].debounceAttr.debValue = DEBOUNCE_STATE_NOT_DEFINED;
+				devices[di].devAttrBeans[ai].debounceAttr.debPastValue = DEBOUNCE_STATE_NOT_DEFINED;
 			}
 			ai++;
 		}
