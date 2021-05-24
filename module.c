@@ -1033,8 +1033,10 @@ static ssize_t devAttrGpioDebMs_store(struct device* dev,
 		}
 		if (debTimeDab->debounceAttr.debStateBelongingTo == DEBOUNCE_STATE_TYPE_ON){
 			debDab->debounceAttr.debOnMinTime_usec = val * 1000;
+			debDab->debounceAttr.debOnStateCnt = 0;
 		}else if (debTimeDab->debounceAttr.debStateBelongingTo == DEBOUNCE_STATE_TYPE_OFF){
 			debDab->debounceAttr.debOffMinTime_usec = val * 1000;
+			debDab->debounceAttr.debOffStateCnt = 0;
 		}else{
 			return -EFAULT;
 		}
@@ -1887,7 +1889,6 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id)
 							devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt++;
 							printk("Debounce value is 1, differnce usec = %lu\n",diff);
 							devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt = devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt >= ULONG_MAX ? 0 : devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt;
-
 						}
 					}
 					ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs);
