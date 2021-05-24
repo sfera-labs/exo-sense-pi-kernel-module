@@ -1879,14 +1879,12 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id)
 					if (actualGPIOStatus){
 						if (diff >= devices[di].devAttrBeans[ai].debounceAttr.debOffMinTime_usec) {
 							devices[di].devAttrBeans[ai].debounceAttr.debPastValue = DEBOUNCE_STATE_0;
-							devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt++;
 							printk("Debounce value is 0, differnce usec = %lu\n",diff);
 							devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt = devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt >= ULONG_MAX ? 0 : devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt;
 						}
 					}else{
 						if (diff >= devices[di].devAttrBeans[ai].debounceAttr.debOnMinTime_usec) {
 							devices[di].devAttrBeans[ai].debounceAttr.debPastValue = DEBOUNCE_STATE_1;
-							devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt++;
 							printk("Debounce value is 1, differnce usec = %lu\n",diff);
 							devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt = devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt >= ULONG_MAX ? 0 : devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt;
 						}
