@@ -46,14 +46,25 @@
 #define RH_ADJ_MAX_TEMP_OFFSET (400)
 #define RH_ADJ_FACTOR (1000)
 
-#define DEBOUNCE_STATE_NOT_DEFINED -1;
-#define DEBOUNCE_STATE_1 1;
-#define DEBOUNCE_STATE_0 0;
+#define DEBOUNCE_DEFAULT_TIME_USEC 50000ul
+#define DEBOUNCE_STATE_NOT_DEFINED -1
+#define DEBOUNCE_STATE_1 1
+#define DEBOUNCE_STATE_0 0
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
 MODULE_VERSION("1.0");
+
+enum digital_in {
+    DI1 = 0,
+    DI2,
+};
+
+static char* const debounce_irq_name[] = {
+	[DI1] = "exosensepi_di1_deb",
+	[DI2] = "exosensepi_di2_deb",
+};
 
 static int temp_calib_m = -1000;
 module_param(temp_calib_m, int, S_IRUGO);
@@ -69,6 +80,8 @@ struct DebounceAttr {
 	int debValue;
 	int debIrqNum;
 	struct timespec64 lastDebIrqTs;
+	unsigned long debOnMinTime_usec;
+	unsigned long debOffMinTime_usec;
 };
 
 struct DeviceAttrBean {
@@ -118,10 +131,16 @@ static ssize_t devAttrGpio_store(struct device* dev,
 static ssize_t devAttrGpioDeb_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
 
-static ssize_t devAttrGpioDebMs_show(struct device* dev,
+static ssize_t devAttrGpioDebOnMinMs_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
 
-static ssize_t devAttrGpioDebMs_store(struct device* dev,
+static ssize_t devAttrGpioDebOnMinMs_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrGpioDebOffMinMs_show(struct device* dev,
+		struct device_attribute* attr, char *buf);
+
+static ssize_t devAttrGpioDebOffMinMs_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrGpioBlink_store(struct device* dev,
@@ -377,6 +396,8 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		.debounceAttr = {
 				.debounceOn = true,
 				.debIrqDevName = "exosensepi_di1_deb",
+				.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
+				.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		},
 	},
 
@@ -394,28 +415,64 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		.debounceAttr = {
 				.debounceOn = true,
 				.debIrqDevName = "exosensepi_di2_deb",
+				.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
+				.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		},
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "di1_deb_ms",
+				.name = "di1_deb_on_ms",
 				.mode = 0660,
 			},
-			.show = devAttrGpioDebMs_show,
-			.store = devAttrGpioDebMs_store,
+			.show = devAttrGpioDebOnMinMs_show,
+			.store = devAttrGpioDebOnMinMs_store,
+		},
+		.debounceAttr = {
+				.debIrqDevName = debounce_irq_name[DI1],
 		},
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "di2_deb_ms",
+				.name = "di1_deb_off_ms",
 				.mode = 0660,
 			},
-			.show = devAttrGpioDebMs_show,
-			.store = devAttrGpioDebMs_store,
+			.show = devAttrGpioDebOffMinMs_show,
+			.store = devAttrGpioDebOffMinMs_store,
+		},
+		.debounceAttr = {
+				.debIrqDevName = debounce_irq_name[DI1],
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "di2_deb_on_ms",
+				.mode = 0660,
+			},
+			.show = devAttrGpioDebOnMinMs_show,
+			.store = devAttrGpioDebOnMinMs_store,
+		},
+		.debounceAttr = {
+				.debIrqDevName = debounce_irq_name[DI2],
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "di2_deb_off_ms",
+				.mode = 0660,
+			},
+			.show = devAttrGpioDebOffMinMs_show,
+			.store = devAttrGpioDebOffMinMs_store,
+		},
+		.debounceAttr = {
+				.debIrqDevName = debounce_irq_name[DI2],
 		},
 	},
 
@@ -817,12 +874,22 @@ static ssize_t devAttrGpioDeb_show(struct device* dev,
 	return sprintf(buf, "\n");
 }
 
-static ssize_t devAttrGpioDebMs_show(struct device* dev,
+static ssize_t devAttrGpioDebOnMinMs_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
 	return sprintf(buf, "\n");
 }
 
-static ssize_t devAttrGpioDebMs_store(struct device* dev,
+static ssize_t devAttrGpioDebOnMinMs_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count) {
+	return count;
+}
+
+static ssize_t devAttrGpioDebOffMinMs_show(struct device* dev,
+		struct device_attribute* attr, char *buf) {
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrGpioDebOffMinMs_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count) {
 	return count;
 }
@@ -1714,7 +1781,9 @@ static int __init exosensepi_init(void) {
 					printk("exosensepi: * | cannot register IRQ of %s in device %s\n", devices[di].devAttrBeans[ai].devAttr.attr.name, devices[di].name);
 					goto fail;
 				}
+				ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs);
 				devices[di].devAttrBeans[ai].debounceAttr.debValue = DEBOUNCE_STATE_NOT_DEFINED;
+				printk("%lld.%.9ld", (long long)devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs.tv_sec, devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs.tv_nsec);
 			}
 			ai++;
 		}
