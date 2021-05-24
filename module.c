@@ -890,6 +890,12 @@ static ssize_t devAttrGpioDebMs_show(struct device* dev,
 	struct DeviceAttrBean* debOnMinMsDab = container_of(attr, struct DeviceAttrBean, devAttr);
 	if (debOnMinMsDab->debounceAttr.debIrqDevName != NULL){
 		struct DeviceAttrBean* debDab = getDebounceDevAttrBean(devGetBean(dev), debOnMinMsDab->debounceAttr.debIrqDevName);
+		if (debDab == NULL || debDab->gpio < 0) {
+			return -EFAULT;
+		}
+		if (debDab->gpioMode != GPIO_MODE_IN) {
+			return -EPERM;
+		}
 		return sprintf(buf, "%d\n", (int)debDab->debounceAttr.debOnMinTime_usec/1000);
 	}
 	return sprintf(buf, "\n");
