@@ -51,6 +51,9 @@
 #define DEBOUNCE_STATE_1 1
 #define DEBOUNCE_STATE_0 0
 
+#define DEBOUNCE_TIME_TYPE_ON 1
+#define DEBOUNCE_TIME_TYPE_OFF 2
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
@@ -77,11 +80,14 @@ MODULE_PARM_DESC(temp_calib_b, " Temperature calibration param B");
 struct DebounceAttr {
 	bool debounceOn;
 	const char* debIrqDevName;
+
 	int debValue;
 	int debIrqNum;
 	struct timespec64 lastDebIrqTs;
 	unsigned long debOnMinTime_usec;
 	unsigned long debOffMinTime_usec;
+
+	int debTimeType;
 };
 
 struct DeviceAttrBean {
@@ -425,6 +431,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.debounceAttr = {
 				.debIrqDevName = debounce_irq_name[DI1],
+				.debTimeType = DEBOUNCE_TIME_TYPE_ON,
 		},
 	},
 
@@ -439,6 +446,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.debounceAttr = {
 				.debIrqDevName = debounce_irq_name[DI1],
+				.debTimeType = DEBOUNCE_TIME_TYPE_OFF,
 		},
 	},
 
@@ -453,6 +461,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.debounceAttr = {
 				.debIrqDevName = debounce_irq_name[DI2],
+				.debTimeType = DEBOUNCE_TIME_TYPE_ON,
 		},
 	},
 
@@ -467,6 +476,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 		},
 		.debounceAttr = {
 				.debIrqDevName = debounce_irq_name[DI2],
+				.debTimeType = DEBOUNCE_TIME_TYPE_OFF,
 		},
 	},
 
@@ -887,22 +897,51 @@ static ssize_t devAttrGpioDeb_show(struct device* dev,
 
 static ssize_t devAttrGpioDebMs_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
-	struct DeviceAttrBean* debOnMinMsDab = container_of(attr, struct DeviceAttrBean, devAttr);
-	if (debOnMinMsDab->debounceAttr.debIrqDevName != NULL){
-		struct DeviceAttrBean* debDab = getDebounceDevAttrBean(devGetBean(dev), debOnMinMsDab->debounceAttr.debIrqDevName);
+	struct DeviceAttrBean* debTimeDab = container_of(attr, struct DeviceAttrBean, devAttr);
+	if (debTimeDab->debounceAttr.debIrqDevName != NULL){
+		struct DeviceAttrBean* debDab = getDebounceDevAttrBean(devGetBean(dev), debTimeDab->debounceAttr.debIrqDevName);
 		if (debDab == NULL || debDab->gpio < 0) {
 			return -EFAULT;
 		}
 		if (debDab->gpioMode != GPIO_MODE_IN) {
 			return -EPERM;
 		}
-		return sprintf(buf, "%d\n", (int)debDab->debounceAttr.debOnMinTime_usec/1000);
+		if (debTimeDab->debounceAttr.debTimeType == DEBOUNCE_TIME_TYPE_ON){
+			return sprintf(buf, "%d\n", (int)debDab->debounceAttr.debOnMinTime_usec/1000);
+		}else if (debTimeDab->debounceAttr.debTimeType == DEBOUNCE_TIME_TYPE_OFF){
+			return sprintf(buf, "%d\n", (int)debDab->debounceAttr.debOffMinTime_usec/1000);
+		}else{
+			return -EFAULT;
+		}
 	}
 	return sprintf(buf, "\n");
 }
 
 static ssize_t devAttrGpioDebMs_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count) {
+
+	unsigned long val;
+	struct DeviceAttrBean* debTimeDab = container_of(attr, struct DeviceAttrBean, devAttr);
+	if (debTimeDab->debounceAttr.debIrqDevName != NULL){
+		struct DeviceAttrBean* debDab = getDebounceDevAttrBean(devGetBean(dev), debTimeDab->debounceAttr.debIrqDevName);
+		if (debDab == NULL || debDab->gpio < 0) {
+			return -EFAULT;
+		}
+		if (debDab->gpioMode != GPIO_MODE_IN) {
+			return -EPERM;
+		}
+		int ret = kstrtol(buf, 10, &val);
+		if (ret < 0) {
+			return ret;
+		}
+		if (debTimeDab->debounceAttr.debTimeType == DEBOUNCE_TIME_TYPE_ON){
+			debDab->debounceAttr.debOnMinTime_usec = val * 1000;
+		}else if (debTimeDab->debounceAttr.debTimeType == DEBOUNCE_TIME_TYPE_OFF){
+			debDab->debounceAttr.debOffMinTime_usec = val * 1000;
+		}else{
+			return -EFAULT;
+		}
+	}
 	return count;
 }
 
@@ -1795,8 +1834,6 @@ static int __init exosensepi_init(void) {
 				}
 				ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs);
 				devices[di].devAttrBeans[ai].debounceAttr.debValue = DEBOUNCE_STATE_NOT_DEFINED;
-
-				printk("BCDebug: * | Init time: %lld.%.9ld", (long long)devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs.tv_sec, devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs.tv_nsec);
 			}
 			ai++;
 		}
