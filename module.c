@@ -512,7 +512,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 				.name = "di1_deb_off_cnt",
 				.mode = 0440,
 			},
-			.show = devAttrGpioDebMs_show,
+			.show = devAttrGpioDebCnt_show,
 			.store = NULL,
 		},
 		.debounceAttr = {
@@ -1056,7 +1056,7 @@ static ssize_t devAttrGpioDebCnt_show(struct device* dev,
 		if (debCntDab->debounceAttr.debStateBelongingTo == DEBOUNCE_STATE_TYPE_ON){
 			return sprintf(buf, "%lu\n", debDab->debounceAttr.debOnStateCnt);
 		}else if (debCntDab->debounceAttr.debStateBelongingTo == DEBOUNCE_STATE_TYPE_OFF){
-			return sprintf(buf, "%lu\n", debDab->debounceAttr.debOnStateCnt);
+			return sprintf(buf, "%lu\n", debDab->debounceAttr.debOffStateCnt);
 		}else{
 			return -EFAULT;
 		}
@@ -1877,12 +1877,17 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id)
 					if (actualGPIOStatus){
 						if (diff >= devices[di].devAttrBeans[ai].debounceAttr.debOffMinTime_usec) {
 							devices[di].devAttrBeans[ai].debounceAttr.debPastValue = DEBOUNCE_STATE_0;
-							printk("BCDebug:\t - time diff = %lu usec, past value = %d\n", diff, devices[di].devAttrBeans[ai].debounceAttr.debPastValue);
+							devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt++;
+							printk("Debounce value is 0, differnce usec = %lu\n",diff);
+							devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt = devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt >= ULONG_MAX ? 0 : devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt;
 						}
 					}else{
 						if (diff >= devices[di].devAttrBeans[ai].debounceAttr.debOnMinTime_usec) {
 							devices[di].devAttrBeans[ai].debounceAttr.debPastValue = DEBOUNCE_STATE_1;
-							printk("BCDebug:\t - time diff = %lu usec, past value = %d\n", diff, devices[di].devAttrBeans[ai].debounceAttr.debPastValue);
+							devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt++;
+							printk("Debounce value is 1, differnce usec = %lu\n",diff);
+							devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt = devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt >= ULONG_MAX ? 0 : devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt;
+
 						}
 					}
 					ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debounceAttr.lastDebIrqTs);
