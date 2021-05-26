@@ -1880,11 +1880,6 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 		di++;
 	}
 
-//	printk(
-//		"BCDebug:\t -  value = %d - interrupt triggered with irq number %d\n",
-//		gpio_get_value(16),
-//		irq);
-
 	return IRQ_HANDLED;
 }
 
