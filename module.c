@@ -1911,11 +1911,12 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 							printk(
 									"Debounce value is 0, differnce usec = %lu\n",
 									diff);
+							devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt++;
 							devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt =
 									devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt
 											>= ULONG_MAX ?
 											0 :
-											devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt++;
+											devices[di].devAttrBeans[ai].debounceAttr.debOffStateCnt;
 						}
 					} else {
 						if (diff
@@ -1925,11 +1926,12 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 							printk(
 									"Debounce value is 1, differnce usec = %lu\n",
 									diff);
+							devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt++;
 							devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt =
 									devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt
 											>= ULONG_MAX ?
 											0 :
-											devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt++;
+											devices[di].devAttrBeans[ai].debounceAttr.debOnStateCnt;
 						}
 					}
 					ktime_get_raw_ts64(
