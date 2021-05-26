@@ -764,53 +764,66 @@ static struct DeviceAttrBean devAttrBeansWiegand[] = {
 	{ }
 };
 
+enum devices {
+	LED = 0,
+	BUZZER,
+	DIGITAL_OUT,
+	DIGITAL_IN,
+	DIGITAL_IO,
+	THA,
+	SYS_TEMP,
+	LUX,
+	WIEGAND,
+	PIR,
+};
+
 static struct DeviceBean devices[] = {
-	{
+	[LED] = {
 		.name = "led",
 		.devAttrBeans = devAttrBeansLed,
 	},
 
-	{
+	[BUZZER] = {
 		.name = "buzzer",
 		.devAttrBeans = devAttrBeansBuzzer,
 	},
 
-	{
+	[DIGITAL_OUT] = {
 		.name = "digital_out",
 		.devAttrBeans = devAttrBeansDigitalOut,
 	},
 
-	{
+	[DIGITAL_IN] = {
 		.name = "digital_in",
 		.devAttrBeans = devAttrBeansDigitalIn,
 	},
 
-	{
+	[DIGITAL_IO] = {
 		.name = "digital_io",
 		.devAttrBeans = devAttrBeansDigitalIO,
 	},
 
-	{
+	[THA] = {
 		.name = "tha",
 		.devAttrBeans = devAttrBeansTha,
 	},
 
-	{
+	[SYS_TEMP] = {
 		.name = "sys_temp",
 		.devAttrBeans = devAttrBeansSysTemp,
 	},
 
-	{
+	[LUX] = {
 		.name = "lux",
 		.devAttrBeans = devAttrBeansLux,
 	},
 
-	{
+	[WIEGAND] = {
 		.name = "wiegand",
 		.devAttrBeans = devAttrBeansWiegand,
 	},
 
-	{
+	[PIR] = {
 		.name = "pir",
 		.devAttrBeans = devAttrBeansPir,
 	},
@@ -1812,67 +1825,64 @@ static struct i2c_driver exosensepi_i2c_driver = {
 
 static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 	struct timespec64 now;
-	int di, ai;
+	int ai;
 	unsigned long diff;
 	int actualGPIOStatus;
 
-	di = 0;
 	ktime_get_raw_ts64(&now);
-	while (devices[di].name != NULL) {
-		if (devices[di].pDevice && !IS_ERR(devices[di].pDevice)) {
-			ai = 0;
-			while (devices[di].devAttrBeans[ai].devAttr.attr.name != NULL) {
-				if (devices[di].devAttrBeans[ai].debBean->debIrqNum == irq
-						&& &&devices[di].devAttrBeans[ai].gpio != 0) {
-					actualGPIOStatus = gpio_get_value(
-							devices[di].devAttrBeans[ai].gpio);
-					diff =
-							diff_usec(
-									(struct timespec64*) &devices[di].devAttrBeans[ai].debBean->lastDebIrqTs,
-									&now);
-					printk(
-							"BCDebug:\t - %s = %d - interrupt triggered with irq number %d\n",
-							devices[di].devAttrBeans[ai].devAttr.attr.name,
-							gpio_get_value(devices[di].devAttrBeans[ai].gpio),
-							irq);
 
-					if (actualGPIOStatus) {
-						if (diff
-								>= devices[di].devAttrBeans[ai].debBean->debOffMinTime_usec) {
-							devices[di].devAttrBeans[ai].debBean->debPastValue =
-									DEBOUNCE_STATE_0;
-							printk(
-									"Debounce value is 0, differnce usec = %lu\n",
-									diff);
-							devices[di].devAttrBeans[ai].debBean->debOffStateCnt =
-									devices[di].devAttrBeans[ai].debBean->debOffStateCnt
-											>= ULONG_MAX ?
-											0 :
-											devices[di].devAttrBeans[ai].debBean->debOffStateCnt+1;
-						}
-					} else {
-						if (diff
-								>= devices[di].devAttrBeans[ai].debBean->debOnMinTime_usec) {
-							devices[di].devAttrBeans[ai].debBean->debPastValue =
-									DEBOUNCE_STATE_1;
-							printk(
-									"Debounce value is 1, differnce usec = %lu\n",
-									diff);
-							devices[di].devAttrBeans[ai].debBean->debOnStateCnt =
-									devices[di].devAttrBeans[ai].debBean->debOnStateCnt
-											>= ULONG_MAX ?
-											0 :
-											devices[di].devAttrBeans[ai].debBean->debOnStateCnt+1;
-						}
-					}
-					ktime_get_raw_ts64(
-							&devices[di].devAttrBeans[ai].debBean->lastDebIrqTs);
-					break;
+	ai = 0;
+	while (devices[DIGITAL_IN].devAttrBeans[ai].devAttr.attr.name != NULL) {
+		if (devices[DIGITAL_IN].devAttrBeans[ai].debBean != NULL
+				&& devices[DIGITAL_IN].devAttrBeans[ai].debBean->debIrqNum
+						== irq
+				&& devices[DIGITAL_IN].devAttrBeans[ai].gpio != 0) {
+			actualGPIOStatus = gpio_get_value(
+					devices[DIGITAL_IN].devAttrBeans[ai].gpio);
+			diff =
+					diff_usec(
+							(struct timespec64*) &devices[DIGITAL_IN].devAttrBeans[ai].debBean->lastDebIrqTs,
+							&now);
+			printk(
+					"BCDebug:\t - %s = %d - interrupt triggered with irq number %d\n",
+					devices[DIGITAL_IN].devAttrBeans[ai].devAttr.attr.name,
+					gpio_get_value(devices[DIGITAL_IN].devAttrBeans[ai].gpio),
+					irq);
+
+			if (actualGPIOStatus) {
+				if (diff
+						>= devices[DIGITAL_IN].devAttrBeans[ai].debBean->debOffMinTime_usec) {
+					devices[DIGITAL_IN].devAttrBeans[ai].debBean->debPastValue =
+							DEBOUNCE_STATE_0;
+					printk(
+							"Debounce value is 0, differnce usec = %lu\n",
+							diff);
+					devices[DIGITAL_IN].devAttrBeans[ai].debBean->debOffStateCnt =
+							devices[DIGITAL_IN].devAttrBeans[ai].debBean->debOffStateCnt
+									>= ULONG_MAX ?
+									0 :
+									devices[DIGITAL_IN].devAttrBeans[ai].debBean->debOffStateCnt+1;
 				}
-				ai++;
+			} else {
+				if (diff
+						>= devices[DIGITAL_IN].devAttrBeans[ai].debBean->debOnMinTime_usec) {
+					devices[DIGITAL_IN].devAttrBeans[ai].debBean->debPastValue =
+							DEBOUNCE_STATE_1;
+					printk(
+							"Debounce value is 1, differnce usec = %lu\n",
+							diff);
+					devices[DIGITAL_IN].devAttrBeans[ai].debBean->debOnStateCnt =
+							devices[DIGITAL_IN].devAttrBeans[ai].debBean->debOnStateCnt
+									>= ULONG_MAX ?
+									0 :
+									devices[DIGITAL_IN].devAttrBeans[ai].debBean->debOnStateCnt+1;
+				}
 			}
+			ktime_get_raw_ts64(
+					&devices[DIGITAL_IN].devAttrBeans[ai].debBean->lastDebIrqTs);
+			break;
 		}
-		di++;
+		ai++;
 	}
 
 	return IRQ_HANDLED;
