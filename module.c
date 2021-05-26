@@ -1821,9 +1821,9 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 	while (devices[di].name != NULL) {
 		if (devices[di].pDevice && !IS_ERR(devices[di].pDevice)) {
 			ai = 0;
-			while (devices[di].devAttrBeans[ai].devAttr.attr.name != NULL
-					&& devices[di].devAttrBeans[ai].gpio != 0) {
-				if (devices[di].devAttrBeans[ai].debBean->debIrqNum == irq) {
+			while (devices[di].devAttrBeans[ai].devAttr.attr.name != NULL) {
+				if (devices[di].devAttrBeans[ai].debBean->debIrqNum == irq
+						&& &&devices[di].devAttrBeans[ai].gpio != 0) {
 					actualGPIOStatus = gpio_get_value(
 							devices[di].devAttrBeans[ai].gpio);
 					diff =
