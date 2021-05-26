@@ -286,21 +286,16 @@ enum digital_in {
     DI2,
 };
 
-static char* const debounceIrqName[] = {
-	[DI1] = "exosensepi_di1_deb",
-	[DI2] = "exosensepi_di2_deb",
-};
-
 static struct DebounceBean debounceBeans[] ={
 	[DI1] = {
-		.debIrqDevName = debounceIrqName[DI1],
+		.debIrqDevName = "exosensepi_di1_deb",
 		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOnStateCnt = 0,
 		.debOffStateCnt = 0,
 	},
 	[DI2] = {
-		.debIrqDevName = debounceIrqName[DI2],
+		.debIrqDevName = "exosensepi_di2_deb",
 		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOnStateCnt = 0,
@@ -1826,9 +1821,9 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 	while (devices[di].name != NULL) {
 		if (devices[di].pDevice && !IS_ERR(devices[di].pDevice)) {
 			ai = 0;
-			while (devices[di].devAttrBeans[ai].devAttr.attr.name != NULL) {
-				if (devices[di].devAttrBeans[ai].debBean->debIrqNum
-						== irq) {
+			while (devices[di].devAttrBeans[ai].devAttr.attr.name != NULL
+					&& devices[di].devAttrBeans[ai].gpio != 0) {
+				if (devices[di].devAttrBeans[ai].debBean->debIrqNum == irq) {
 					actualGPIOStatus = gpio_get_value(
 							devices[di].devAttrBeans[ai].gpio);
 					diff =
