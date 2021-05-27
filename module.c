@@ -48,8 +48,6 @@
 
 #define DEBOUNCE_DEFAULT_TIME_USEC 50000ul
 #define DEBOUNCE_STATE_NOT_DEFINED -1
-#define DEBOUNCE_STATE_1 1
-#define DEBOUNCE_STATE_0 0
 
 #define DEBOUNCE_STATE_TYPE_ON 1
 #define DEBOUNCE_STATE_TYPE_OFF 2
@@ -70,6 +68,7 @@ MODULE_PARM_DESC(temp_calib_b, " Temperature calibration param B");
 struct DebounceBean {
 	int gpio;
 	const char* debIrqDevName;
+	int debValue;
 	int debPastValue;
 	int debIrqNum;
 	struct timespec64 lastDebIrqTs;
@@ -958,8 +957,8 @@ static ssize_t devAttrGpioDeb_show(struct device *dev,
 			return sprintf(buf, "%d\n", actualGPIOStatus);
 		} else {
 			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n",
-					diff, dab->debBean->debPastValue);
-			return sprintf(buf, "%d\n", dab->debBean->debPastValue);
+					diff, dab->debBean->debValue);
+			return sprintf(buf, "%d\n", dab->debBean->debValue);
 		}
 	} else {
 		if (diff >= dab->debBean->debOffMinTime_usec) {
@@ -968,11 +967,11 @@ static ssize_t devAttrGpioDeb_show(struct device *dev,
 			return sprintf(buf, "%d\n", actualGPIOStatus);
 		} else {
 			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n",
-					diff, dab->debBean->debPastValue);
-			return sprintf(buf, "%d\n", dab->debBean->debPastValue);
+					diff, dab->debBean->debValue);
+			return sprintf(buf, "%d\n", dab->debBean->debValue);
 		}
 	}
-	return sprintf(buf, "%d\n", dab->debBean->debPastValue);
+	return sprintf(buf, "%d\n", dab->debBean->debValue);
 }
 
 static ssize_t devAttrGpioDebMsOn_show(struct device *dev,
@@ -1022,6 +1021,19 @@ static ssize_t devAttrGpioDebMsOff_store(struct device *dev,
 static ssize_t devAttrGpioDebOnCnt_show(struct device *dev,
 		struct device_attribute *attr, char *buf) {
 	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
+	struct timespec64 now;
+	unsigned long diff;
+	int actualGPIOStatus;
+
+	ktime_get_raw_ts64(&now);
+	diff = diff_usec(
+			(struct timespec64*) &dab->debBean->lastDebIrqTs, &now);
+
+	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
+	if (dab->debBean->debPastValue == actualGPIOStatus && actualGPIOStatus
+			&& diff >= dab->debBean->debOnMinTime_usec) {
+		return sprintf(buf, "%lu\n", dab->debBean->debOnStateCnt + 1);
+	}
 
 	return sprintf(buf, "%lu\n", dab->debBean->debOnStateCnt);
 }
@@ -1029,6 +1041,19 @@ static ssize_t devAttrGpioDebOnCnt_show(struct device *dev,
 static ssize_t devAttrGpioDebOffCnt_show(struct device *dev,
 		struct device_attribute *attr, char *buf) {
 	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
+	struct timespec64 now;
+	unsigned long diff;
+	int actualGPIOStatus;
+
+	ktime_get_raw_ts64(&now);
+	diff = diff_usec(
+			(struct timespec64*) &dab->debBean->lastDebIrqTs, &now);
+
+	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
+	if (dab->debBean->debPastValue == actualGPIOStatus && !actualGPIOStatus
+			&& diff >= dab->debBean->debOffMinTime_usec) {
+		return sprintf(buf, "%lu\n", dab->debBean->debOffStateCnt + 1);
+	}
 
 	return sprintf(buf, "%lu\n", dab->debBean->debOffStateCnt);
 }
@@ -1827,42 +1852,41 @@ static struct i2c_driver exosensepi_i2c_driver = {
 
 static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 	struct timespec64 now;
-	int db;
+	int db = 0;
 	unsigned long diff;
 	int actualGPIOStatus;
 
 	ktime_get_raw_ts64(&now);
 
-	db = 0;
 	while (debounceBeans[db].debIrqDevName != NULL) {
 		if (debounceBeans[db].debIrqNum == irq && debounceBeans[db].gpio != 0) {
 			actualGPIOStatus = gpio_get_value(debounceBeans[db].gpio);
+
 			diff = diff_usec(
 					(struct timespec64*) &debounceBeans[db].lastDebIrqTs, &now);
-			printk(
-					"BCDebug:\t - gpio %d = %d - interrupt triggered with irq number %d\n",
-					debounceBeans[db].gpio, actualGPIOStatus, irq);
+
+			if (debounceBeans[db].debPastValue == actualGPIOStatus) {
+				return IRQ_HANDLED;
+			}
+
+			debounceBeans[db].debPastValue = actualGPIOStatus;
 
 			if (actualGPIOStatus) {
 				if (diff >= debounceBeans[db].debOffMinTime_usec) {
-					debounceBeans[db].debPastValue =
-					DEBOUNCE_STATE_0;
-					printk("Debounce value is 0, differnce usec = %lu\n", diff);
+					debounceBeans[db].debValue = 0;
 					debounceBeans[db].debOffStateCnt =
 							debounceBeans[db].debOffStateCnt >= ULONG_MAX ?
 									0 : debounceBeans[db].debOffStateCnt + 1;
 				}
 			} else {
 				if (diff >= debounceBeans[db].debOnMinTime_usec) {
-					debounceBeans[db].debPastValue =
-					DEBOUNCE_STATE_1;
-					printk("Debounce value is 1, differnce usec = %lu\n", diff);
+					debounceBeans[db].debValue = 1;
 					debounceBeans[db].debOnStateCnt =
 							debounceBeans[db].debOnStateCnt >= ULONG_MAX ?
 									0 : debounceBeans[db].debOnStateCnt + 1;
 				}
 			}
-			ktime_get_raw_ts64(&debounceBeans[db].astDebIrqTs);
+			ktime_get_raw_ts64(&debounceBeans[db].lastDebIrqTs);
 			break;
 		}
 		db++;
@@ -1963,7 +1987,8 @@ static int __init exosensepi_init(void) {
 						goto fail;
 					}
 					ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debBean->lastDebIrqTs);
-					devices[di].devAttrBeans[ai].debBean->debPastValue = DEBOUNCE_STATE_NOT_DEFINED;
+					devices[di].devAttrBeans[ai].debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
+					devices[di].devAttrBeans[ai].debBean->debPastValue = gpio_get_value(devices[di].devAttrBeans[ai].debBean->gpio);
 				}
 			}
 			ai++;
