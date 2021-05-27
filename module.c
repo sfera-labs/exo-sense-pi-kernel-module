@@ -765,66 +765,53 @@ static struct DeviceAttrBean devAttrBeansWiegand[] = {
 	{ }
 };
 
-enum devices {
-	LED = 0,
-	BUZZER,
-	DIGITAL_OUT,
-	DIGITAL_IN,
-	DIGITAL_IO,
-	THA,
-	SYS_TEMP,
-	LUX,
-	WIEGAND,
-	PIR,
-};
-
 static struct DeviceBean devices[] = {
-	[LED] = {
+	{
 		.name = "led",
 		.devAttrBeans = devAttrBeansLed,
 	},
 
-	[BUZZER] = {
+	{
 		.name = "buzzer",
 		.devAttrBeans = devAttrBeansBuzzer,
 	},
 
-	[DIGITAL_OUT] = {
+	{
 		.name = "digital_out",
 		.devAttrBeans = devAttrBeansDigitalOut,
 	},
 
-	[DIGITAL_IN] = {
+	{
 		.name = "digital_in",
 		.devAttrBeans = devAttrBeansDigitalIn,
 	},
 
-	[DIGITAL_IO] = {
+	{
 		.name = "digital_io",
 		.devAttrBeans = devAttrBeansDigitalIO,
 	},
 
-	[THA] = {
+	{
 		.name = "tha",
 		.devAttrBeans = devAttrBeansTha,
 	},
 
-	[SYS_TEMP] = {
+	{
 		.name = "sys_temp",
 		.devAttrBeans = devAttrBeansSysTemp,
 	},
 
-	[LUX] = {
+	{
 		.name = "lux",
 		.devAttrBeans = devAttrBeansLux,
 	},
 
-	[WIEGAND] = {
+	{
 		.name = "wiegand",
 		.devAttrBeans = devAttrBeansWiegand,
 	},
 
-	[PIR] = {
+	{
 		.name = "pir",
 		.devAttrBeans = devAttrBeansPir,
 	},
