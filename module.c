@@ -1865,7 +1865,7 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 			ktime_get_raw_ts64(&debounceBeans[db].astDebIrqTs);
 			break;
 		}
-		ai++;
+		db++;
 	}
 
 	return IRQ_HANDLED;
