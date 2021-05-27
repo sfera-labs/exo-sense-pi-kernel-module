@@ -68,6 +68,7 @@ module_param(temp_calib_b, int, S_IRUGO);
 MODULE_PARM_DESC(temp_calib_b, " Temperature calibration param B");
 
 struct DebounceBean {
+	int gpio;
 	const char* debIrqDevName;
 	int debPastValue;
 	int debIrqNum;
@@ -288,6 +289,7 @@ enum digital_in {
 
 static struct DebounceBean debounceBeans[] ={
 	[DI1] = {
+		.gpio = GPIO_DI1,
 		.debIrqDevName = "exosensepi_di1_deb",
 		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
@@ -296,6 +298,7 @@ static struct DebounceBean debounceBeans[] ={
 	},
 
 	[DI2] = {
+		.gpio = GPIO_DI2,
 		.debIrqDevName = "exosensepi_di2_deb",
 		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
@@ -419,8 +422,6 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDeb_show,
 			.store = NULL,
 		},
-		.gpioMode = GPIO_MODE_IN,
-		.gpio = GPIO_DI1,
 		.debBean = &debounceBeans[DI1],
 	},
 
@@ -433,8 +434,6 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDeb_show,
 			.store = NULL,
 		},
-		.gpioMode = GPIO_MODE_IN,
-		.gpio = GPIO_DI2,
 		.debBean = &debounceBeans[DI2],
 	},
 
@@ -951,7 +950,7 @@ static ssize_t devAttrGpioDeb_show(struct device *dev,
 	dab = container_of(attr, struct DeviceAttrBean, devAttr);
 	diff = diff_usec((struct timespec64*) &dab->debBean->lastDebIrqTs,
 			&now);
-	actualGPIOStatus = gpio_get_value(dab->gpio);
+	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
 	if (actualGPIOStatus) {
 		if (diff >= dab->debBean->debOnMinTime_usec) {
 			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n",
@@ -1954,7 +1953,7 @@ static int __init exosensepi_init(void) {
 			}
 			if (devices[di].devAttrBeans[ai].debBean != NULL){
 				if (!devices[di].devAttrBeans[ai].debBean->debIrqNum){
-					devices[di].devAttrBeans[ai].debBean->debIrqNum = gpio_to_irq(devices[di].devAttrBeans[ai].gpio);
+					devices[di].devAttrBeans[ai].debBean->debIrqNum = gpio_to_irq(devices[di].devAttrBeans[ai].debBean->gpio);
 					if (request_irq(devices[di].devAttrBeans[ai].debBean->debIrqNum,
 						(void *) gpio_deb_irq_handler,
 								IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
