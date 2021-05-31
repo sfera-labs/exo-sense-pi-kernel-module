@@ -36,6 +36,8 @@
 #define RH_ADJ_MAX_TEMP_OFFSET (400)
 #define RH_ADJ_FACTOR (1000)
 
+#define MAX_ATEC_I2C_SN_PROBE 3
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
@@ -125,6 +127,9 @@ static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
 static ssize_t opt3001_show(struct device* dev, struct device_attribute* attr,
 		char *buf);
 
+static ssize_t atecc608aSerial_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
 
@@ -166,6 +171,7 @@ struct i2c_client *sgp40_i2c_client = NULL;
 struct i2c_client *lm75aU16_i2c_client = NULL;
 struct i2c_client *lm75aU9_i2c_client = NULL;
 struct i2c_client *opt3001_i2c_client = NULL;
+struct i2c_client *atecc608a_i2c_client = NULL;
 struct mutex exosensepi_i2c_mutex;
 static VocAlgorithmParams voc_algorithm_params;
 
@@ -483,6 +489,21 @@ static struct DeviceAttrBean devAttrBeansLux[] = {
 	{ }
 };
 
+static struct DeviceAttrBean devAttrBeansAtec[] = {
+	{
+		.devAttr = {
+			.attr = {
+				.name = "atecc608a",
+				.mode = 0440,
+			},
+			.show = atecc608aSerial_show,
+			.store = NULL,
+		},
+	},
+
+	{ }
+};
+
 static struct DeviceAttrBean devAttrBeansWiegand[] = {
 	{
 		.devAttr = {
@@ -613,6 +634,11 @@ static struct DeviceBean devices[] = {
 	{
 		.name = "pir",
 		.devAttrBeans = devAttrBeansPir,
+	},
+
+	{
+		.name = "atec",
+		.devAttrBeans = devAttrBeansAtec,
 	},
 
 	{ }
@@ -1129,6 +1155,13 @@ static ssize_t opt3001_show(struct device* dev,
 	return sprintf(buf, "%d\n", res);
 }
 
+static ssize_t atecc608aSerial_show(struct device* dev,
+		struct device_attribute* attr,
+		char *buf) {
+
+	return sprintf(buf, "\n");
+}
+
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
 	return sprintf(buf, w1.enabled ? "1\n" : "0\n");
@@ -1459,6 +1492,34 @@ static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
 	return count;
 }
 
+void getCRC16LittleEndian(size_t length, const uint8_t *data, uint8_t *crc_le)
+{
+    size_t i;
+    uint16_t crc_register = 0;
+    uint16_t polynom = 0x8005;
+    uint8_t shift_register;
+    uint8_t data_bit, crc_bit;
+
+    for (i = 0; i <= length; i++)
+    {
+        for (shift_register = 0x01; shift_register > 0x00; shift_register <<= 1)
+        {
+            data_bit = (data[i] & shift_register) ? 1 : 0;
+            crc_bit = crc_register >> 15;
+            crc_register <<= 1;
+            if (data_bit != crc_bit)
+            {
+                crc_register ^= polynom;
+            }
+        }
+    }
+    crc_le[0] = (uint8_t)(crc_register & 0x00FF);
+    crc_le[1] = (uint8_t)(crc_register >> 8);
+
+    printk("CRC 0 is %X\n",crc_le[0]);
+    printk("CRC 1 is %X\n",crc_le[1]);
+}
+
 static int exosensepi_i2c_probe(struct i2c_client *client,
 		const struct i2c_device_id *id) {
 	uint16_t conf;
@@ -1483,6 +1544,72 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 				break;
 			}
 		}
+	} else if (client->addr == 0x60) {
+		uint8_t wake_msg = 0x00;		// msg sent to I2C bus to wake up ATECC608A from sleep state
+		uint8_t word_address = 0x03;	// word address, 0x03 for normal operation
+
+		uint8_t length;
+
+//		uint8_t dataForCrc[] = { 0x23, 0x01, 0x23, 0xAA, 0x7B, 0x00, 0x00, 0x60, 0x02, 0xC8,
+//								0xAB, 0xEA, 0xF5, 0xEE, 0x01, 0x41, 0x00, 0xC0, 0x00, 0x00,
+//								0x00, 0x83, 0x20, 0x87, 0x20, 0x8F, 0x20, 0xC4,
+//								0x8F, 0x8F, 0x8F, 0x8F, 0x8F };
+//		length =33;
+
+		uint8_t dataForCrc[] = { 0x07, 0x01, 0x23, 0xAA, 0x7B };
+		length =5;
+
+		// per leggere 32 byte
+		/*
+		 * 0x03 = normal command
+		 * 0x07 = total bytes
+		 * 0x02 = read operation
+		 * 0x80 = read 32 bytes from configuration memory area
+		 * 0x00 = configuration memory address part 1
+		 * 0x00 = configuration memory address part 2
+		 */
+//		uint8_t data[8] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x00, 0x00};
+		uint8_t data[] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD};
+
+		// per leggere 4 byte
+//		uint8_t data[] = { 0x03, 0x07, 0x02, 0x00, 0x00, 0x00, 0x1E, 0x2D};
+
+	    uint8_t crc_le[2];
+
+		// stuff CRC into packet
+	    getCRC16LittleEndian(length, dataForCrc, crc_le);
+
+		uint8_t result[40];
+
+		int res;
+
+		//fai test errore qui
+		//retry n volte
+		if (client == NULL) {
+			return -ENODEV;
+		}
+
+		if (!exosensepi_i2c_lock()) {
+			return -EBUSY;
+		}
+
+		res=i2c_master_send(client, &wake_msg, 1);
+
+		msleep(2);
+
+		i2c_master_send(client, data, 8);
+
+		msleep(2);
+
+		i2c_master_recv(client, result, 40);
+
+		for (i = 0; i < 40; i++) {
+			printk("Read byte %d is %X*****\n", i, result[i]);
+		}
+
+		//aggiungere ctrl crc
+		exosensepi_i2c_unlock();
+
 	}
 	printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
 	return 0;

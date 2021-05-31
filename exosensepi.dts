@@ -67,6 +67,12 @@
 				reg = <0x45>;
 				status = "okay";
 			};
+			
+			atecc608a: atecc608a@60 {
+				compatible = "sferalabs,exosensepi";
+				reg = <0x60>;
+				status = "okay";
+			};
 		};
 	};
 	
