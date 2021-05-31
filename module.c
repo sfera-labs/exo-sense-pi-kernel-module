@@ -1492,19 +1492,21 @@ static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
 	return count;
 }
 
-void getCRC16LittleEndian(size_t length, const uint8_t *data, uint8_t *crc_le)
+void getCRC16LittleEndian(size_t length, const uint8_t *data)
 {
-    size_t i;
+    size_t counter;
     uint16_t crc_register = 0;
     uint16_t polynom = 0x8005;
     uint8_t shift_register;
     uint8_t data_bit, crc_bit;
 
-    for (i = 0; i <= length; i++)
+    uint8_t res[2];
+
+    for (counter = 0; counter < length; counter++)
     {
         for (shift_register = 0x01; shift_register > 0x00; shift_register <<= 1)
         {
-            data_bit = (data[i] & shift_register) ? 1 : 0;
+            data_bit = (data[counter] & shift_register) ? 1 : 0;
             crc_bit = crc_register >> 15;
             crc_register <<= 1;
             if (data_bit != crc_bit)
@@ -1513,11 +1515,10 @@ void getCRC16LittleEndian(size_t length, const uint8_t *data, uint8_t *crc_le)
             }
         }
     }
-    crc_le[0] = (uint8_t)(crc_register & 0x00FF);
-    crc_le[1] = (uint8_t)(crc_register >> 8);
-
-    printk("CRC 0 is %X\n",crc_le[0]);
-    printk("CRC 1 is %X\n",crc_le[1]);
+    res[0] = (uint8_t)(crc_register & 0x00FF);
+    res[1] = (uint8_t)(crc_register >> 8);
+    printk("CRC 0 is %X\n",res[0]);
+    printk("CRC 1 is %X\n",res[1]);
 }
 
 static int exosensepi_i2c_probe(struct i2c_client *client,
@@ -1556,8 +1557,8 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 //								0x8F, 0x8F, 0x8F, 0x8F, 0x8F };
 //		length =33;
 
-		uint8_t dataForCrc[] = { 0x07, 0x01, 0x23, 0xAA, 0x7B };
-		length =5;
+		uint8_t dataForCrc[] = { 0x07, 0x02, 0x80, 0x00, 0x00 };
+		length = 5;
 
 		// per leggere 32 byte
 		/*
@@ -1568,16 +1569,16 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 		 * 0x00 = configuration memory address part 1
 		 * 0x00 = configuration memory address part 2
 		 */
-//		uint8_t data[8] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x00, 0x00};
-		uint8_t data[] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD};
+		uint8_t data[8] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD};
+//		uint8_t data[8] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD};
 
 		// per leggere 4 byte
 //		uint8_t data[] = { 0x03, 0x07, 0x02, 0x00, 0x00, 0x00, 0x1E, 0x2D};
 
-	    uint8_t crc_le[2];
+	    uint8_t *crc_le[] = { 0x00, 0x00};
 
 		// stuff CRC into packet
-	    getCRC16LittleEndian(length, dataForCrc, crc_le);
+	    getCRC16LittleEndian(length, dataForCrc);
 
 		uint8_t result[40];
 
