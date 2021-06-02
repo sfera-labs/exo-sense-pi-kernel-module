@@ -492,7 +492,7 @@ static struct DeviceAttrBean devAttrBeansAtec[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "atecc608a_sn",
+				.name = "serial_num",
 				.mode = 0440,
 			},
 			.show = atecc608aSerial_show,
@@ -636,7 +636,7 @@ static struct DeviceBean devices[] = {
 	},
 
 	{
-		.name = "atec",
+		.name = "sec_elem",
 		.devAttrBeans = devAttrBeansAtec,
 	},
 
@@ -1159,7 +1159,7 @@ static ssize_t atecc608aSerial_show(struct device* dev,
 		char *buf) {
 
 	return sprintf(buf,
-			"0x%02hX 0x%02hX 0x%02hX 0x%02hX 0x%02hX 0x%02hX 0x%02hX 0x%02hX 0x%02hX \n",
+			"%02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX\n",
 			atec_serial_number[0], atec_serial_number[1], atec_serial_number[2],
 			atec_serial_number[3], atec_serial_number[4], atec_serial_number[5],
 			atec_serial_number[6], atec_serial_number[7], atec_serial_number[8]);
@@ -1546,65 +1546,54 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 		}
 	} else if (client->addr == 0x60) {
 		uint8_t i2c_wake_msg = 0x00;		// msg sent to I2C bus to wake up ATECC608A from sleep state
-		uint8_t word_address = 0x03;		// word address, 0x03 for normal operation
-		uint8_t crc_le[2];		// CRC-16 little endian for i2c message verification
-		uint8_t i2c_message[8];
 		uint8_t i2c_response[35];
-		uint8_t i2c_command[] = { 0x07, 0x02, 0x80, 0x00, 0x00 };
-
-	    getCRC16LittleEndian(5, i2c_command, crc_le);
-
+		uint8_t crc_le[2];					// CRC-16 little endian for i2c message verification
 		/*
-		 * In this specific case the content of i2c_message is:
-		 * { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD }
-		 *
-		 * 0x03 = normal command
-		 * 0x07 = total bytes for CRC generation (2 CRC bytes included)
-		 * 0x02 = read operation
-		 * 0x80 = read 32 bytes from configuration memory area
-		 * 0x00 = configuration memory address part 1
-		 * 0x00 = configuration memory address part 2
-		 * 0x09 = CRC byte 1 in little endian format
-		 * 0xAD = CRC byte 2 in little endian format
-		 */
-	    i2c_message[0] = word_address;
-	    memcpy(&i2c_message[1], &i2c_command[0], 5);
-	    memcpy(&i2c_message[6], &crc_le[0], 2);
+				 * In this specific case the content of i2c_message is:
+				 * { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD }
+				 *
+				 * 0x03 = normal command
+				 * 0x07 = total bytes for CRC generation (2 CRC bytes included)
+				 * 0x02 = read operation
+				 * 0x80 = read 32 bytes from configuration memory area
+				 * 0x00 = configuration memory address part 1
+				 * 0x00 = configuration memory address part 2
+				 * 0x09 = CRC byte 1 in little endian format
+				 * 0xAD = CRC byte 2 in little endian format
+				 */
+		uint8_t i2c_message[8] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD };
 
 	    for (uint8_t i = 0; i < 3; i++){
 			if (exosensepi_i2c_lock()) {
 				// send wake up message, no check non return value
 				i2c_master_send(client, &i2c_wake_msg, 1);
-				msleep(2);
-				// send read command
-				if (i2c_master_send(client, i2c_message, 8) < 0)
-					goto serial_number_fail;
 				msleep(1);
-				// read ATEC response
-				if (i2c_master_recv(client, i2c_response, 35) < 0)
-					goto serial_number_fail;
-
-				exosensepi_i2c_unlock();
-
-				getCRC16LittleEndian(33, i2c_response, crc_le);
-
-				if (crc_le[0] == i2c_response[33] && crc_le[1] == i2c_response[34]) {
-					memcpy(&atec_serial_number[0], &i2c_response[1], 4);
-			        memcpy(&atec_serial_number[4], &i2c_response[9], 5);
-
-					printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
-					return 0;
+				// send read command
+				if (i2c_master_send(client, i2c_message, 8) == 8){
+					msleep(1);
+					// read ATEC response
+					if (i2c_master_recv(client, i2c_response, 35) == 35){
+						exosensepi_i2c_unlock();
+						getCRC16LittleEndian(33, i2c_response, crc_le);
+						if (crc_le[0] == i2c_response[33] && crc_le[1] == i2c_response[34]) {
+							memcpy(&atec_serial_number[0], &i2c_response[1], 4);
+							memcpy(&atec_serial_number[4], &i2c_response[9], 5);
+							printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
+							return 0;
+						}
+					}else{
+						exosensepi_i2c_unlock();
+					}
+				}else{
+					exosensepi_i2c_unlock();
 				}
 			}
 	    }
-	    goto serial_number_fail;
+		printk(KERN_ALERT "exosensepi: * | failed to read ATECC608A serial number\n");
+		return -1;
 	}
 	printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
 	return 0;
-
-	serial_number_fail:
-		printk(KERN_ALERT "exosensepi: * | failed to read ATECC608A serial number\n");
-		return -1;
 }
 
 static int exosensepi_i2c_remove(struct i2c_client *client) {
