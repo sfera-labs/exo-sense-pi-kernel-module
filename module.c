@@ -84,6 +84,11 @@ struct WiegandBean {
 	struct timespec64 lastBitTs;
 };
 
+struct SecElemBean {
+	uint8_t atec_serial_number[9];
+	bool serialFound;
+};
+
 static struct class *pDeviceClass;
 
 static ssize_t devAttrGpio_show(struct device* dev,
@@ -177,8 +182,6 @@ static bool ttl2enabled = false;
 
 static int temp_offset = 0;
 
-static uint8_t atec_serial_number[9];
-
 static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 	1970, 1955, 1941, 1927, 1912, 1898, 1885, 1871, 1857, 1843, 1830, 1816,
 	1803, 1790, 1777, 1764, 1751, 1738, 1725, 1712, 1700, 1687, 1675, 1663,
@@ -214,6 +217,10 @@ static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 	70, 70, 69, 69, 68, 68, 67, 67, 66, 66, 65, 65, 65, 64, 64, 63, 63, 62, 62,
 	61, 61, 60, 60, 59, 59, 59, 58, 58, 57, 57, 56, 56, 56, 55, 55, 54, 54, 54,
 	53, 53 };
+
+static struct SecElemBean secElem = {
+	.serialFound = false,
+};
 
 static struct WiegandBean w1 = {
 	.d0 = {
@@ -1154,22 +1161,19 @@ static ssize_t opt3001_show(struct device* dev,
 	return sprintf(buf, "%d\n", res);
 }
 
-static ssize_t atecc608aSerial_show(struct device* dev,
-		struct device_attribute* attr,
-		char *buf) {
-	for (int i=0; i<9; i++){
-		if (atec_serial_number[i] != 0x00){
-			goto success;
-		}
+static ssize_t atecc608aSerial_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
+	if (secElem.serialFound) {
+		return sprintf(buf,
+				"%02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX\n",
+				secElem.atec_serial_number[0], secElem.atec_serial_number[1],
+				secElem.atec_serial_number[2], secElem.atec_serial_number[3],
+				secElem.atec_serial_number[4], secElem.atec_serial_number[5],
+				secElem.atec_serial_number[6], secElem.atec_serial_number[7],
+				secElem.atec_serial_number[8]);
 	}
-	return -ENODEV;
 
-	success:
-	return sprintf(buf,
-			"%02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX\n",
-			atec_serial_number[0], atec_serial_number[1], atec_serial_number[2],
-			atec_serial_number[3], atec_serial_number[4], atec_serial_number[5],
-			atec_serial_number[6], atec_serial_number[7], atec_serial_number[8]);
+	return -ENODEV;
 }
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
@@ -1583,8 +1587,9 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 						exosensepi_i2c_unlock();
 						getCRC16LittleEndian(33, i2c_response, crc_le);
 						if (crc_le[0] == i2c_response[33] && crc_le[1] == i2c_response[34]) {
-							memcpy(&atec_serial_number[0], &i2c_response[1], 4);
-							memcpy(&atec_serial_number[4], &i2c_response[9], 5);
+							secElem.serialFound = true;
+							memcpy(&secElem.atec_serial_number[0], &i2c_response[1], 4);
+							memcpy(&secElem.atec_serial_number[4], &i2c_response[9], 5);
 							printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
 							return 0;
 						}
