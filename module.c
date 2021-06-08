@@ -1157,7 +1157,14 @@ static ssize_t opt3001_show(struct device* dev,
 static ssize_t atecc608aSerial_show(struct device* dev,
 		struct device_attribute* attr,
 		char *buf) {
+	for (int i=0; i<9; i++){
+		if (atec_serial_number[i] != 0x00){
+			goto success;
+		}
+	}
+	return -ENODEV;
 
+	success:
 	return sprintf(buf,
 			"%02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX\n",
 			atec_serial_number[0], atec_serial_number[1], atec_serial_number[2],
@@ -1549,18 +1556,18 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 		uint8_t i2c_response[35];
 		uint8_t crc_le[2];					// CRC-16 little endian for i2c message verification
 		/*
-				 * In this specific case the content of i2c_message is:
-				 * { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD }
-				 *
-				 * 0x03 = normal command
-				 * 0x07 = total bytes for CRC generation (2 CRC bytes included)
-				 * 0x02 = read operation
-				 * 0x80 = read 32 bytes from configuration memory area
-				 * 0x00 = configuration memory address part 1
-				 * 0x00 = configuration memory address part 2
-				 * 0x09 = CRC byte 1 in little endian format
-				 * 0xAD = CRC byte 2 in little endian format
-				 */
+		 * In this specific case the content of i2c_message is:
+		 * { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD }
+		 *
+		 * 0x03 = normal command
+		 * 0x07 = total bytes for CRC generation (2 CRC bytes included)
+		 * 0x02 = read operation
+		 * 0x80 = read 32 bytes from configuration memory area
+		 * 0x00 = configuration memory address part 1
+		 * 0x00 = configuration memory address part 2
+		 * 0x09 = CRC byte 1 in little endian format
+		 * 0xAD = CRC byte 2 in little endian format
+		 */
 		uint8_t i2c_message[8] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD };
 
 	    for (uint8_t i = 0; i < 3; i++){
