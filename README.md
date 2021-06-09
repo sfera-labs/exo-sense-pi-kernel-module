@@ -16,6 +16,7 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [Buzzer](#buzzer)
     - [Wiegand](#wiegand)
     - [Microphone](#microphone)
+    - [Secure element](#sec-elem)
     - [1-Wire](#1wire)
 
 ## <a name="install"></a>Compile and Install
@@ -243,6 +244,12 @@ Press <kbd>F4</kbd> to select the "Capture" view , adjust the volume with the up
 You can now record from the `dmic_sv` device with adjusted volume:
 
     arecord -D dmic_sv -c2 -r 44100 -f S32_LE -t wav -V mono -v rec-vol.wav
+
+### <a name="sec-elem"></a>Secure Element - `/sys/class/exosensepi/sec_elem/`
+
+|File|R/W|Value|Description|
+|----|:---:|:-:|-----------|
+|serial_num|R|9 1-byte HEX value|Secure element serial number|
 
 ### <a name="1wire"></a>1-Wire
 

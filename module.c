@@ -84,6 +84,11 @@ struct WiegandBean {
 	struct timespec64 lastBitTs;
 };
 
+struct SecElemBean {
+	uint8_t atec_serial_number[9];
+	bool serialFound;
+};
+
 static struct class *pDeviceClass;
 
 static ssize_t devAttrGpio_show(struct device* dev,
@@ -123,6 +128,9 @@ static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
 		struct device_attribute* attr, char *buf);
 
 static ssize_t opt3001_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t atecc608aSerial_show(struct device* dev, struct device_attribute* attr,
 		char *buf);
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
@@ -209,6 +217,10 @@ static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 	70, 70, 69, 69, 68, 68, 67, 67, 66, 66, 65, 65, 65, 64, 64, 63, 63, 62, 62,
 	61, 61, 60, 60, 59, 59, 59, 58, 58, 57, 57, 56, 56, 56, 55, 55, 54, 54, 54,
 	53, 53 };
+
+static struct SecElemBean secElem = {
+	.serialFound = false,
+};
 
 static struct WiegandBean w1 = {
 	.d0 = {
@@ -483,6 +495,21 @@ static struct DeviceAttrBean devAttrBeansLux[] = {
 	{ }
 };
 
+static struct DeviceAttrBean devAttrBeansAtec[] = {
+	{
+		.devAttr = {
+			.attr = {
+				.name = "serial_num",
+				.mode = 0440,
+			},
+			.show = atecc608aSerial_show,
+			.store = NULL,
+		},
+	},
+
+	{ }
+};
+
 static struct DeviceAttrBean devAttrBeansWiegand[] = {
 	{
 		.devAttr = {
@@ -613,6 +640,11 @@ static struct DeviceBean devices[] = {
 	{
 		.name = "pir",
 		.devAttrBeans = devAttrBeansPir,
+	},
+
+	{
+		.name = "sec_elem",
+		.devAttrBeans = devAttrBeansAtec,
 	},
 
 	{ }
@@ -1129,6 +1161,21 @@ static ssize_t opt3001_show(struct device* dev,
 	return sprintf(buf, "%d\n", res);
 }
 
+static ssize_t atecc608aSerial_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
+	if (secElem.serialFound) {
+		return sprintf(buf,
+				"%02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX %02hX\n",
+				secElem.atec_serial_number[0], secElem.atec_serial_number[1],
+				secElem.atec_serial_number[2], secElem.atec_serial_number[3],
+				secElem.atec_serial_number[4], secElem.atec_serial_number[5],
+				secElem.atec_serial_number[6], secElem.atec_serial_number[7],
+				secElem.atec_serial_number[8]);
+	}
+
+	return -ENODEV;
+}
+
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
 	return sprintf(buf, w1.enabled ? "1\n" : "0\n");
@@ -1459,6 +1506,31 @@ static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
 	return count;
 }
 
+void getCRC16LittleEndian(size_t length, const uint8_t *data, uint8_t *crc_le)
+{
+    size_t counter;
+    uint16_t crc_register = 0;
+    uint16_t polynom = 0x8005;
+    uint8_t shift_register;
+    uint8_t data_bit, crc_bit;
+
+    for (counter = 0; counter < length; counter++)
+    {
+        for (shift_register = 0x01; shift_register > 0x00; shift_register <<= 1)
+        {
+            data_bit = (data[counter] & shift_register) ? 1 : 0;
+            crc_bit = crc_register >> 15;
+            crc_register <<= 1;
+            if (data_bit != crc_bit)
+            {
+                crc_register ^= polynom;
+            }
+        }
+    }
+    crc_le[0] = (uint8_t)(crc_register & 0x00FF);
+    crc_le[1] = (uint8_t)(crc_register >> 8);
+}
+
 static int exosensepi_i2c_probe(struct i2c_client *client,
 		const struct i2c_device_id *id) {
 	uint16_t conf;
@@ -1483,6 +1555,54 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 				break;
 			}
 		}
+	} else if (client->addr == 0x60) {
+		uint8_t i2c_wake_msg = 0x00;		// msg sent to I2C bus to wake up ATECC608A from sleep state
+		uint8_t i2c_response[35];
+		uint8_t crc_le[2];					// CRC-16 little endian for i2c message verification
+		/*
+		 * In this specific case the content of i2c_message is:
+		 * { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD }
+		 *
+		 * 0x03 = normal command
+		 * 0x07 = total bytes for CRC generation (2 CRC bytes included)
+		 * 0x02 = read operation
+		 * 0x80 = read 32 bytes from configuration memory area
+		 * 0x00 = configuration memory address part 1
+		 * 0x00 = configuration memory address part 2
+		 * 0x09 = CRC byte 1 in little endian format
+		 * 0xAD = CRC byte 2 in little endian format
+		 */
+		uint8_t i2c_message[8] = { 0x03, 0x07, 0x02, 0x80, 0x00, 0x00, 0x09, 0xAD };
+
+	    for (uint8_t i = 0; i < 3; i++){
+			if (exosensepi_i2c_lock()) {
+				// send wake up message, no check non return value
+				i2c_master_send(client, &i2c_wake_msg, 1);
+				msleep(1);
+				// send read command
+				if (i2c_master_send(client, i2c_message, 8) == 8){
+					msleep(1);
+					// read ATEC response
+					if (i2c_master_recv(client, i2c_response, 35) == 35){
+						exosensepi_i2c_unlock();
+						getCRC16LittleEndian(33, i2c_response, crc_le);
+						if (crc_le[0] == i2c_response[33] && crc_le[1] == i2c_response[34]) {
+							secElem.serialFound = true;
+							memcpy(&secElem.atec_serial_number[0], &i2c_response[1], 4);
+							memcpy(&secElem.atec_serial_number[4], &i2c_response[9], 5);
+							printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
+							return 0;
+						}
+					}else{
+						exosensepi_i2c_unlock();
+					}
+				}else{
+					exosensepi_i2c_unlock();
+				}
+			}
+	    }
+		printk(KERN_ALERT "exosensepi: * | failed to read ATECC608A serial number\n");
+		return -1;
 	}
 	printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
 	return 0;
