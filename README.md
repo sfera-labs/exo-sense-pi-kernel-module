@@ -116,6 +116,23 @@ You can read and/or write to these files to configure, monitor and control your 
 |di*N*|R|1|Digital input *N* high|
 |di*N*|R|0|Digital input *N* low|
 
+For each digital input, we also expose: 
+* the debounced state
+* 2 debounce times in ms ("on" for high state and "off" for low state) with default value of 50ms
+* 2 state counters ("on" for high state and "off" for low state)
+The debounce times for each DI has been splitted in "on" and "off" in order to make the debounce feature more versatile and suited for particular application needs (e.g. if we consider digital input 1, and set its debounce "on" time to 50ms and its debounce "off" time to 0ms, we just created a delay-on type control for digital input 1 with delay-on time equal to 50ms).
+Change in value of a debounce time automatically reset it's state counter to the value of 0.
+To avoid the overflow of debounce counter variables, when a counter variable reach the maximum admissible value of its datatype, the counter value is reset to 0.
+
+|File|R/W|Value|Description|
+|----|:---:|:-:|-----------|
+|di*N*_deb|R|1|Digital input *N* debounced value high|
+|di*N*_deb|R|0|Digital input *N* debounced value low|
+|di*N*_deb_on_ms|RW|val|Minimum time in ms to trigger change of the debounced value of digital input *N* to high state. Default value=50|
+|di*N*_deb_off_ms|RW|val|Minimum time in ms to trigger change of the debounced value of digital input *N* to low state. Default value=50|
+|di*N*_deb_on_cnt|R|val| Number of times with the debounced value of the digital input *N* in high state. Max value = ULONG_MAX|
+|di*N*_deb_off_cnt|R|val|Number of times with the debounced value of the digital input *N* in high state Max value = ULONG_MAX|
+
 ### <a name="digital-out"></a>Digital Output - `/sys/class/exosensepi/digital_out/`
 
 |File|R/W|Value|Description|
