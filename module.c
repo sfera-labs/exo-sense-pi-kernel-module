@@ -49,9 +49,6 @@
 #define DEBOUNCE_DEFAULT_TIME_USEC 50000ul
 #define DEBOUNCE_STATE_NOT_DEFINED -1
 
-#define DEBOUNCE_STATE_TYPE_ON 1
-#define DEBOUNCE_STATE_TYPE_OFF 2
-
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
@@ -931,6 +928,7 @@ static ssize_t devAttrGpioDeb_show(struct device *dev,
 	unsigned long diff;
 	int actualGPIOStatus;
 	struct DeviceAttrBean *dab;
+	int res;
 
 	ktime_get_raw_ts64(&now);
 	dab = container_of(attr, struct DeviceAttrBean, devAttr);
@@ -939,26 +937,18 @@ static ssize_t devAttrGpioDeb_show(struct device *dev,
 	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
 	if (actualGPIOStatus) {
 		if (diff >= dab->debBean->debOnMinTime_usec) {
-			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n",
-					diff, actualGPIOStatus);
-			return sprintf(buf, "%d\n", actualGPIOStatus);
+			res = actualGPIOStatus;
 		} else {
-			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n",
-					diff, dab->debBean->debValue);
-			return sprintf(buf, "%d\n", dab->debBean->debValue);
+			res = dab->debBean->debValue;
 		}
 	} else {
 		if (diff >= dab->debBean->debOffMinTime_usec) {
-			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n",
-					diff, actualGPIOStatus);
-			return sprintf(buf, "%d\n", actualGPIOStatus);
+			res = actualGPIOStatus;
 		} else {
-			printk("BCDebug:\t - time diff = %lu usec, actual value = %d\n",
-					diff, dab->debBean->debValue);
-			return sprintf(buf, "%d\n", dab->debBean->debValue);
+			res = dab->debBean->debValue;
 		}
 	}
-	return sprintf(buf, "%d\n", dab->debBean->debValue);
+	return sprintf(buf, "%d\n", res);
 }
 
 static ssize_t devAttrGpioDebMsOn_show(struct device *dev,
@@ -1011,6 +1001,7 @@ static ssize_t devAttrGpioDebOnCnt_show(struct device *dev,
 	struct timespec64 now;
 	unsigned long diff;
 	int actualGPIOStatus;
+	unsigned long res;
 
 	ktime_get_raw_ts64(&now);
 	diff = diff_usec(
@@ -1019,10 +1010,12 @@ static ssize_t devAttrGpioDebOnCnt_show(struct device *dev,
 	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
 	if (dab->debBean->debPastValue == actualGPIOStatus && actualGPIOStatus
 			&& diff >= dab->debBean->debOnMinTime_usec) {
-		return sprintf(buf, "%lu\n", dab->debBean->debOnStateCnt + 1);
+		res = dab->debBean->debOnStateCnt >= ULONG_MAX ?
+				0 : dab->debBean->debOnStateCnt + 1;;
+	}else{
+		res = dab->debBean->debOnStateCnt;
 	}
-
-	return sprintf(buf, "%lu\n", dab->debBean->debOnStateCnt);
+	return sprintf(buf, "%lu\n", res);
 }
 
 static ssize_t devAttrGpioDebOffCnt_show(struct device *dev,
@@ -1031,6 +1024,7 @@ static ssize_t devAttrGpioDebOffCnt_show(struct device *dev,
 	struct timespec64 now;
 	unsigned long diff;
 	int actualGPIOStatus;
+	unsigned long res;
 
 	ktime_get_raw_ts64(&now);
 	diff = diff_usec(
@@ -1039,10 +1033,13 @@ static ssize_t devAttrGpioDebOffCnt_show(struct device *dev,
 	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
 	if (dab->debBean->debPastValue == actualGPIOStatus && !actualGPIOStatus
 			&& diff >= dab->debBean->debOffMinTime_usec) {
-		return sprintf(buf, "%lu\n", dab->debBean->debOffStateCnt + 1);
+		res = dab->debBean->debOffStateCnt >= ULONG_MAX ?
+				0 : dab->debBean->debOffStateCnt + 1;;
+	}else{
+		res = dab->debBean->debOffStateCnt;
 	}
 
-	return sprintf(buf, "%lu\n", dab->debBean->debOffStateCnt);
+	return sprintf(buf, "%lu\n", res);
 }
 
 static ssize_t devAttrGpioBlink_store(struct device* dev,
@@ -1873,7 +1870,7 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 									0 : debounceBeans[db].debOnStateCnt + 1;
 				}
 			}
-			ktime_get_raw_ts64(&debounceBeans[db].lastDebIrqTs);
+			debounceBeans[db].lastDebIrqTs = now;
 			break;
 		}
 		db++;
@@ -1962,15 +1959,15 @@ static int __init exosensepi_init(void) {
 					goto fail;
 				}
 			}
-			if (devices[di].devAttrBeans[ai].debBean != NULL){
-				if (!devices[di].devAttrBeans[ai].debBean->debIrqNum){
+			if (devices[di].devAttrBeans[ai].debBean != NULL) {
+				if (!devices[di].devAttrBeans[ai].debBean->debIrqNum) {
 					devices[di].devAttrBeans[ai].debBean->debIrqNum = gpio_to_irq(devices[di].devAttrBeans[ai].debBean->gpio);
 					if (request_irq(devices[di].devAttrBeans[ai].debBean->debIrqNum,
-						(void *) gpio_deb_irq_handler,
-								IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-								devices[di].devAttrBeans[ai].debBean->debIrqDevName,
-								NULL)) {
-						printk("exosensepi: * | cannot register IRQ of %s in device %s\n", devices[di].devAttrBeans[ai].devAttr.attr.name, devices[di].name);
+									(void *) gpio_deb_irq_handler,
+									IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+									devices[di].devAttrBeans[ai].debBean->debIrqDevName,
+									NULL)) {
+						printk(KERN_ALERT "exosensepi: * | cannot register IRQ of %s in device %s\n", devices[di].devAttrBeans[ai].devAttr.attr.name, devices[di].name);
 						goto fail;
 					}
 					ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debBean->lastDebIrqTs);
