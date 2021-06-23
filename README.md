@@ -249,7 +249,7 @@ You can now record from the `dmic_sv` device with adjusted volume:
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|serial_num|R|9 1-byte HEX value|Secure element serial number|
+|serial_num|R|9 1-byte HEX values|Secure element serial number|
 
 ### <a name="1wire"></a>1-Wire
 
