@@ -123,7 +123,6 @@ For each digital input, we also expose:
 * 2 state counters ("on" for high state and "off" for low state)
 The debounce times for each DI has been splitted in "on" and "off" in order to make the debounce feature more versatile and suited for particular application needs (e.g. if we consider digital input 1, and set its debounce "on" time to 50ms and its debounce "off" time to 0ms, we just created a delay-on type control for digital input 1 with delay-on time equal to 50ms).
 Change in value of a debounce time automatically reset its state counter to the value of 0.
-To avoid the overflow of debounce counter variables, when a counter variable reach the maximum admissible value of its datatype (in our case it's an unsigned long so the max value is 4294967295), the counter value is reset to 0.
 The debounce state of each digital input at system start is UNDEFINED (-1), because if the signal on the specific channel cannot remain stable for a period of time greater than the ones defined as debounce "on" and "off" times, we are not able to provide a valid result. 
 
 |File|R/W|Value|Description|
@@ -131,10 +130,10 @@ The debounce state of each digital input at system start is UNDEFINED (-1), beca
 |di*N*_deb|R|1|Digital input *N* debounced value high|
 |di*N*_deb|R|0|Digital input *N* debounced value low|
 |di*N*_deb|R|-1|Digital input *N* debounced value undefined|
-|di*N*_deb_on_ms|RW|val|Minimum time in ms to trigger change of the debounced value of digital input *N* to high state. Default value=50|
-|di*N*_deb_off_ms|RW|val|Minimum time in ms to trigger change of the debounced value of digital input *N* to low state. Default value=50|
-|di*N*_deb_on_cnt|R|val| Number of times with the debounced value of the digital input *N* in high state. Max value = 4294967295|
-|di*N*_deb_off_cnt|R|val|Number of times with the debounced value of the digital input *N* in high state Max value = 4294967295|
+|di*N*_deb_on_ms|RW|val|Minimum stable time in ms to trigger change of the debounced value of digital input *N* to high state. Default value=50|
+|di*N*_deb_off_ms|RW|val|Minimum stable time in ms to trigger change of the debounced value of digital input *N* to low state. Default value=50|
+|di*N*_deb_on_cnt|R|val| Number of times with the debounced value of the digital input *N* in high state. Rolls back to 0 after 4294967295|
+|di*N*_deb_off_cnt|R|val|Number of times with the debounced value of the digital input *N* in low state. Rolls back to 0 after 4294967295|
 
 ### <a name="digital-out"></a>Digital Output - `/sys/class/exosensepi/digital_out/`
 
