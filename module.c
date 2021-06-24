@@ -116,6 +116,19 @@ struct SecElemBean {
 	bool serialFound;
 };
 
+struct SoundEvalBean {
+	char *setting_device_name;
+	int setting_time_weight;
+	int setting_freq_weight;
+	unsigned long setting_interval;
+	char * setting_period_res_file;
+	char * setting_interval_res_file;
+	int setting_disable;
+
+	double l_eq_period;
+	double l_eq_interval;
+};
+
 static struct class *pDeviceClass;
 
 static ssize_t devAttrGpio_show(struct device* dev,
@@ -708,6 +721,88 @@ static struct DeviceAttrBean devAttrBeansAtec[] = {
 	{ }
 };
 
+static struct DeviceAttrBean devAttrBeansSound[] = {
+	{
+		.devAttr = {
+			.attr = {
+				.name = "period_LEQ",
+				.mode = 0660,
+			},
+			.show = NULL, //modificare qui
+			.store = NULL, //modificare qui
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "interval_LEQ",
+				.mode = 0660,
+			},
+			.show = NULL, //modificare qui
+			.store = NULL, //modificare qui
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "setting_device",
+				.mode = 0660,
+			},
+			.show = NULL, //modificare qui
+			.store = NULL, //modificare qui
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "setting_time_weight",
+				.mode = 0660,
+			},
+			.show = NULL, //modificare qui
+			.store = NULL, //modificare qui
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "setting_freq_weight",
+				.mode = 0660,
+			},
+			.show = NULL, //modificare qui
+			.store = NULL, //modificare qui
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "setting_interval_sec",
+				.mode = 0660,
+			},
+			.show = NULL, //modificare qui
+			.store = NULL, //modificare qui
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "setting_disable",
+				.mode = 0660,
+			},
+			.show = NULL, //modificare qui
+			.store = NULL, //modificare qui
+		},
+	},
+
+	{ }
+};
+
+
 static struct DeviceAttrBean devAttrBeansWiegand[] = {
 	{
 		.devAttr = {
@@ -843,6 +938,11 @@ static struct DeviceBean devices[] = {
 	{
 		.name = "sec_elem",
 		.devAttrBeans = devAttrBeansAtec,
+	},
+
+	{
+		.name = "sound_eval",
+		.devAttrBeans = devAttrBeansSound,
 	},
 
 	{ }
