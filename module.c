@@ -121,8 +121,6 @@ struct SoundEvalBean {
 	int setting_time_weight;
 	int setting_freq_weight;
 	unsigned long setting_interval;
-	char * setting_period_res_file;
-	char * setting_interval_res_file;
 	int setting_disable;
 
 	double l_eq_period;
@@ -284,6 +282,10 @@ static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 
 static struct SecElemBean secElem = {
 	.serialFound = false,
+};
+
+static struct SoundEvalBean soundEval = {
+
 };
 
 static struct WiegandBean w1 = {
