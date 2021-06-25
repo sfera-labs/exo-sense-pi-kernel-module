@@ -121,7 +121,7 @@ struct SoundEvalBean {
 	int setting_time_weight;
 	int setting_freq_weight;
 	unsigned long setting_interval;
-	int setting_disable;
+	int setting_disable_service;
 
 	double l_eq_period;
 	double l_eq_interval;
@@ -191,6 +191,48 @@ static ssize_t opt3001_show(struct device* dev, struct device_attribute* attr,
 
 static ssize_t atecc608aSerial_show(struct device* dev, struct device_attribute* attr,
 		char *buf);
+
+static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalSettingDevice_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalSettingDevice_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalSettingTimeWeight_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalSettingTimeWeight_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalSettingFreqWeight_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalSettingFreqWeight_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalSettingIntervalSec_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalSettingIntervalSec_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalSettingDisableService_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalSettingDisableService_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
@@ -285,7 +327,8 @@ static struct SecElemBean secElem = {
 };
 
 static struct SoundEvalBean soundEval = {
-
+	.l_eq_period = -1.0;
+	.l_eq_interval = -1.0;
 };
 
 static struct WiegandBean w1 = {
@@ -730,8 +773,8 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 				.name = "period_LEQ",
 				.mode = 0660,
 			},
-			.show = NULL, //modificare qui
-			.store = NULL, //modificare qui
+			.show = devAttrSndEvalPeriodLEQ_show,
+			.store = devAttrSndEvalPeriodLEQ_store,
 		},
 	},
 
@@ -741,8 +784,8 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 				.name = "interval_LEQ",
 				.mode = 0660,
 			},
-			.show = NULL, //modificare qui
-			.store = NULL, //modificare qui
+			.show = devAttrSndEvalIntervalLEQ_show,
+			.store = devAttrSndEvalIntervalLEQ_store,
 		},
 	},
 
@@ -752,8 +795,8 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 				.name = "setting_device",
 				.mode = 0660,
 			},
-			.show = NULL, //modificare qui
-			.store = NULL, //modificare qui
+			.show = devAttrSndEvalSettingDevice_show,
+			.store = devAttrSndEvalSettingDevice_store,
 		},
 	},
 
@@ -763,8 +806,8 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 				.name = "setting_time_weight",
 				.mode = 0660,
 			},
-			.show = NULL, //modificare qui
-			.store = NULL, //modificare qui
+			.show = devAttrSndEvalSettingTimeWeight_show,
+			.store = devAttrSndEvalSettingTimeWeight_store,
 		},
 	},
 
@@ -774,8 +817,8 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 				.name = "setting_freq_weight",
 				.mode = 0660,
 			},
-			.show = NULL, //modificare qui
-			.store = NULL, //modificare qui
+			.show = devAttrSndEvalSettingFreqWeight_show,
+			.store = devAttrSndEvalSettingFreqWeight_store,
 		},
 	},
 
@@ -785,25 +828,24 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 				.name = "setting_interval_sec",
 				.mode = 0660,
 			},
-			.show = NULL, //modificare qui
-			.store = NULL, //modificare qui
+			.show = devAttrSndEvalSettingIntervalSec_show,
+			.store = devAttrSndEvalSettingIntervalSec_store,
 		},
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "setting_disable",
+				.name = "setting_disable_service",
 				.mode = 0660,
 			},
-			.show = NULL, //modificare qui
-			.store = NULL, //modificare qui
+			.show = devAttrSndEvalSettingDisableService_show,
+			.store = devAttrSndEvalSettingDisableService_store,
 		},
 	},
 
 	{ }
 };
-
 
 static struct DeviceAttrBean devAttrBeansWiegand[] = {
 	{
@@ -1594,6 +1636,76 @@ static ssize_t atecc608aSerial_show(struct device *dev,
 	}
 
 	return -ENODEV;
+}
+
+static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	return count;
+}
+
+static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	return count;
+}
+
+static ssize_t devAttrSndEvalSettingDevice_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrSndEvalSettingDevice_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	return count;
+}
+
+static ssize_t devAttrSndEvalSettingTimeWeight_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrSndEvalSettingTimeWeight_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	return count;
+}
+
+static ssize_t devAttrSndEvalSettingFreqWeight_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrSndEvalSettingFreqWeight_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	return count;
+}
+
+static ssize_t devAttrSndEvalSettingIntervalSec_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrSndEvalSettingIntervalSec_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	return count;
+}
+
+static ssize_t devAttrSndEvalSettingDisableService_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "\n");
+}
+
+static ssize_t devAttrSndEvalSettingDisableService_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	return count;
 }
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
