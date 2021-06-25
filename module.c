@@ -20,6 +20,13 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/time.h>
+
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h>
+#include <linux/fs.h>
+#include <linux/seq_file.h>
+#include <linux/slab.h>
+
 #include "sensirion/sht4x/sht4x.h"
 #include "sensirion/sgp40/sgp40.h"
 #include "sensirion/sgp40_voc_index/sensirion_voc_algorithm.h"
@@ -49,10 +56,81 @@
 #define DEBOUNCE_DEFAULT_TIME_USEC 50000ul
 #define DEBOUNCE_STATE_NOT_DEFINED -1
 
+#define PROCFS_MAX_SIZE     2048
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
 MODULE_VERSION("1.0");
+
+char procfs_buffer[PROCFS_MAX_SIZE];
+unsigned long procfs_buffer_size = 0;
+struct proc_dir_entry *entry;
+struct proc_dir_entry *parent;
+
+const char procfs_folder_name[] = "sound-eval";
+const char procfs_setting_file_name[] = "settings";
+const char default_settings[] =
+		"version=1.0.0\n"
+		"device=plughw:0\n"
+		"time=0\n"
+		"frequency=0\n"
+		"interval=5\n"
+		"period-result=/sys/class/exosensepi/sound_eval/period_LEQ\n"
+		"interval-result=/sys/class/exosensepi/sound_eval/interval_LEQ\n"
+		"continuous=1\n"
+		"interval-only=0\n"
+		"quiet=1\n"
+		"disable=0\n"
+		;
+
+static ssize_t procfile_read(struct file *file, char __user *buffer, size_t count, loff_t *offset)
+{
+    if (*offset > 0 || count < PROCFS_MAX_SIZE) /* we have finished to read, return 0 */
+        return 0;
+
+    if(copy_to_user(buffer, procfs_buffer, procfs_buffer_size))
+        return -EFAULT;
+
+    *offset = procfs_buffer_size;
+    return procfs_buffer_size;
+}
+
+static ssize_t procfile_write(struct file* file,const char __user *buffer,size_t count,loff_t *f_pos){
+    int tlen;
+    char *tmp = kzalloc((count+1),GFP_KERNEL);
+    if(!tmp)return -ENOMEM;
+    if(copy_from_user(tmp,buffer,count)){
+        kfree(tmp);
+        return EFAULT;
+    }
+
+    tlen = PROCFS_MAX_SIZE;
+    if (count < PROCFS_MAX_SIZE)
+        tlen = count;
+    memcpy(&procfs_buffer,tmp,tlen);
+    procfs_buffer_size = tlen;
+    kfree(tmp);
+    return tlen;
+}
+
+static int procfile_show(struct seq_file *m,void *v){
+    static char *str = NULL;
+    seq_printf(m,"%s\n",str);
+    return 0;
+}
+
+static int procfile_open(struct inode *inode,struct file *file){
+    return single_open(file,procfile_show,NULL);
+}
+
+static struct proc_ops proc_fops = {
+    .proc_lseek = seq_lseek,
+    .proc_open = procfile_open,
+    .proc_read = procfile_read,
+    .proc_release = single_release,
+    .proc_write = procfile_write,
+};
 
 static int temp_calib_m = -1000;
 module_param(temp_calib_m, int, S_IRUGO);
@@ -327,8 +405,8 @@ static struct SecElemBean secElem = {
 };
 
 static struct SoundEvalBean soundEval = {
-	.l_eq_period = -1.0;
-	.l_eq_interval = -1.0;
+	.l_eq_period = -1.0,
+	.l_eq_interval = -1.0,
 };
 
 static struct WiegandBean w1 = {
@@ -2244,6 +2322,9 @@ static void cleanup(void) {
 	}
 
 	wiegandDisable(&w1);
+
+	remove_proc_entry(procfs_setting_file_name, parent);
+	remove_proc_entry(procfs_folder_name, NULL);
 }
 
 static int __init exosensepi_init(void) {
@@ -2251,6 +2332,19 @@ static int __init exosensepi_init(void) {
 	int di, ai;
 
 	printk(KERN_INFO "exosensepi: - | init\n");
+
+	parent = proc_mkdir(procfs_folder_name, NULL);
+	entry = proc_create(procfs_setting_file_name, 0777, parent, &proc_fops);
+	if (!entry) {
+		return -1;
+	}
+
+	char *tmp = kzalloc((strlen(default_settings) + 1), GFP_KERNEL);
+	if(!tmp)return -ENOMEM;
+	strcpy(tmp, default_settings);
+	memcpy(&procfs_buffer, tmp, strlen(default_settings));
+	procfs_buffer_size = strlen(default_settings);
+	kfree(tmp);
 
 	i2c_add_driver(&exosensepi_i2c_driver);
 	mutex_init(&exosensepi_i2c_mutex);
