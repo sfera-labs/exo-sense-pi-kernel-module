@@ -2317,7 +2317,7 @@ static int __init exosensepi_init(void) {
 	printk(KERN_INFO "exosensepi: - | init\n");
 
 	parent = proc_mkdir(procfs_folder_name, NULL);
-	entry = proc_create(procfs_setting_file_name, 0555, parent, &proc_fops);
+	entry = proc_create(procfs_setting_file_name, 0666, parent, &proc_fops);
 	if (!entry) {
 		return -1;
 	}
