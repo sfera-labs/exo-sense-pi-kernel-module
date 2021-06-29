@@ -56,7 +56,7 @@
 #define DEBOUNCE_DEFAULT_TIME_USEC 50000ul
 #define DEBOUNCE_STATE_NOT_DEFINED -1
 
-#define PROCFS_MAX_SIZE     2048
+#define PROCFS_MAX_SIZE     1024
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
@@ -68,11 +68,11 @@ unsigned long procfs_buffer_size = 0;
 struct proc_dir_entry *entry;
 struct proc_dir_entry *parent;
 
-const char procfs_folder_name[] = "sound-eval";
-const char procfs_setting_file_name[] = "settings";
+const char procfs_folder_name[] = "exosensepi";
+const char procfs_setting_file_name[] = "sound_eval_settings";
 const char default_settings[] =
 		"version=1.0.0\n"
-		"device=plughw:0\n"
+		"device=exosensepi-mic\n"
 		"time=0\n"
 		"frequency=0\n"
 		"interval=5\n"
@@ -80,7 +80,7 @@ const char default_settings[] =
 		"interval-result=/sys/class/exosensepi/sound_eval/interval_LEQ\n"
 		"continuous=1\n"
 		"interval-only=0\n"
-		"quiet=1\n"
+		"quiet=0\n"
 		"disable=0\n"
 		;
 
@@ -194,15 +194,21 @@ struct SecElemBean {
 	bool serialFound;
 };
 
+struct soundEvalResult {
+	double l_EQ;
+	unsigned long time_epoch_sec;
+	int time_epoch_millisec;
+
+};
+
 struct SoundEvalBean {
-	char *setting_device_name;
 	int setting_time_weight;
 	int setting_freq_weight;
 	unsigned long setting_interval;
 	int setting_disable_service;
 
-	double l_eq_period;
-	double l_eq_interval;
+	struct soundEvalResult period_res;
+	struct soundEvalResult interval_res;
 };
 
 static struct class *pDeviceClass;
@@ -280,12 +286,6 @@ static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_
 		char *buf);
 
 static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrSndEvalSettingDevice_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
-
-static ssize_t devAttrSndEvalSettingDevice_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrSndEvalSettingTimeWeight_show(struct device* dev, struct device_attribute* attr,
@@ -405,8 +405,12 @@ static struct SecElemBean secElem = {
 };
 
 static struct SoundEvalBean soundEval = {
-	.l_eq_period = -1.0,
-	.l_eq_interval = -1.0,
+	.period_res.l_EQ = -1.0,
+	.period_res.time_epoch_sec = 0,
+	.period_res.time_epoch_millisec = 0,
+	.interval_res.l_EQ = -1.0,
+	.interval_res.time_epoch_sec = 0,
+	.interval_res.time_epoch_millisec = 0,
 };
 
 static struct WiegandBean w1 = {
@@ -864,17 +868,6 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 			},
 			.show = devAttrSndEvalIntervalLEQ_show,
 			.store = devAttrSndEvalIntervalLEQ_store,
-		},
-	},
-
-	{
-		.devAttr = {
-			.attr = {
-				.name = "setting_device",
-				.mode = 0660,
-			},
-			.show = devAttrSndEvalSettingDevice_show,
-			.store = devAttrSndEvalSettingDevice_store,
 		},
 	},
 
@@ -1736,16 +1729,6 @@ static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrSndEvalSettingDevice_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
-	return sprintf(buf, "\n");
-}
-
-static ssize_t devAttrSndEvalSettingDevice_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
-	return count;
-}
-
 static ssize_t devAttrSndEvalSettingTimeWeight_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
 	return sprintf(buf, "\n");
@@ -2334,7 +2317,7 @@ static int __init exosensepi_init(void) {
 	printk(KERN_INFO "exosensepi: - | init\n");
 
 	parent = proc_mkdir(procfs_folder_name, NULL);
-	entry = proc_create(procfs_setting_file_name, 0777, parent, &proc_fops);
+	entry = proc_create(procfs_setting_file_name, 0555, parent, &proc_fops);
 	if (!entry) {
 		return -1;
 	}
@@ -2343,7 +2326,7 @@ static int __init exosensepi_init(void) {
 	if(!tmp)return -ENOMEM;
 	strcpy(tmp, default_settings);
 	memcpy(&procfs_buffer, tmp, strlen(default_settings));
-	procfs_buffer_size = strlen(default_settings);
+	procfs_buffer_size = strlen(tmp);
 	kfree(tmp);
 
 	i2c_add_driver(&exosensepi_i2c_driver);
