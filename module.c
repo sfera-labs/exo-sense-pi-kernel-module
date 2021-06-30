@@ -56,7 +56,8 @@
 #define DEBOUNCE_DEFAULT_TIME_USEC 50000ul
 #define DEBOUNCE_STATE_NOT_DEFINED -1
 
-#define PROCFS_MAX_SIZE     1024
+#define PROCFS_MAX_SIZE 1024
+#define SETTINGS_LINE_MAX_SIZE 500
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
@@ -2310,6 +2311,32 @@ static void cleanup(void) {
 	remove_proc_entry(procfs_folder_name, NULL);
 }
 
+int get_settings_line(char *line, int max, int start)
+{
+	int nch = 0;
+	int c;
+	max = max - 1; /* leave room for '\0' */
+	int i = start;
+
+	if (i >= procfs_buffer_size)
+		return 0;
+
+	while (i < procfs_buffer_size) {
+		c = procfs_buffer[i];
+		if (c == '\n')
+			break;
+
+		if (nch < max) {
+			line[nch] = c;
+			nch = nch + 1;
+		}
+		i++;
+	}
+
+	line[nch] = '\0';
+	return nch;
+}
+
 static int __init exosensepi_init(void) {
 	int result = 0;
 	int di, ai;
@@ -2328,6 +2355,16 @@ static int __init exosensepi_init(void) {
 	memcpy(&procfs_buffer, tmp, strlen(default_settings));
 	procfs_buffer_size = strlen(tmp);
 	kfree(tmp);
+
+
+	char settings_line[SETTINGS_LINE_MAX_SIZE];
+	int buffer_index = 0;
+	int read_chars = 0;
+	while (buffer_index < procfs_buffer_size) {
+		read_chars = get_settings_line(settings_line, SETTINGS_LINE_MAX_SIZE, buffer_index) + 1;
+		buffer_index = buffer_index + read_chars;
+//		printk("settings line is %s, buffer index is %d, read %d chars, total buffer %lu\n", settings_line, buffer_index, read_chars, procfs_buffer_size);
+	}
 
 	i2c_add_driver(&exosensepi_i2c_driver);
 	mutex_init(&exosensepi_i2c_mutex);
