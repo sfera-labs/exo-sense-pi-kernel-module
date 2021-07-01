@@ -57,7 +57,6 @@
 #define DEBOUNCE_STATE_NOT_DEFINED -1
 
 #define PROCFS_MAX_SIZE 1024
-#define SETTINGS_LINE_MAX_SIZE 500
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
@@ -91,11 +90,12 @@ const char default_settings[][PROCFS_MAX_SIZE] = {
 			"interval-result=/sys/class/exosensepi/sound_eval/interval_LEQ\n"
 			"continuous=1\n"
 			"interval-only=0\n"
-			"quiet=0\n"
+			"quiet=1\n"
 			"disable="
 		},
 		{
 			"\n"
+			"setting-check-sec=5\n"
 		}
 };
 
@@ -210,7 +210,7 @@ struct SecElemBean {
 };
 
 struct soundEvalResult {
-	double l_EQ;
+	long l_EQ;
 	unsigned long time_epoch_sec;
 	int time_epoch_millisec;
 
@@ -1084,6 +1084,18 @@ static struct DeviceBean devices[] = {
 	{ }
 };
 
+void write_settings_to_proc_buffer(void){
+	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
+	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s", default_settings[0], soundEval.setting_time_weight,
+				default_settings[1], soundEval.setting_freq_weight,
+				default_settings[2], soundEval.setting_interval,
+				default_settings[3], soundEval.setting_disable_service,
+				default_settings[4]);
+	memcpy(&procfs_buffer, tmp, strlen(tmp));
+	procfs_buffer_size = strlen(tmp);
+	kfree(tmp);
+}
+
 static char toUpper(char c) {
 	if (c >= 97 && c <= 122) {
 		return c - 32;
@@ -1732,21 +1744,29 @@ static ssize_t atecc608aSerial_show(struct device *dev,
 
 static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
+	return sprintf(buf, "%ld %lu %03d\n", soundEval.period_res.l_EQ, soundEval.period_res.time_epoch_sec,
+			soundEval.period_res.time_epoch_millisec);
 	return sprintf(buf, "\n");
 }
 
 static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
+	sscanf(buf, "%ld %lu %d", &soundEval.period_res.l_EQ, &soundEval.period_res.time_epoch_sec,
+			&soundEval.period_res.time_epoch_millisec);
 	return count;
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
+	return sprintf(buf, "%ld %lu %03d\n", soundEval.interval_res.l_EQ, soundEval.interval_res.time_epoch_sec,
+			soundEval.interval_res.time_epoch_millisec);
 	return sprintf(buf, "\n");
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
+	sscanf(buf, "%ld %lu %d", &soundEval.interval_res.l_EQ, &soundEval.interval_res.time_epoch_sec,
+			&soundEval.interval_res.time_epoch_millisec);
 	return count;
 }
 
@@ -1764,8 +1784,9 @@ static ssize_t devAttrSndEvalSettingTimeWeight_store(struct device* dev,
 	if (ret < 0) {
 		return ret;
 	}
-	if (val>=0 && val<3){
+	if (val >= 0 && val < 3 && val != soundEval.setting_time_weight) {
 		soundEval.setting_time_weight = val;
+		write_settings_to_proc_buffer();
 	}
 	return count;
 }
@@ -1784,8 +1805,9 @@ static ssize_t devAttrSndEvalSettingFreqWeight_store(struct device* dev,
 	if (ret < 0) {
 		return ret;
 	}
-	if (val>=0 && val<3){
+	if (val >= 0 && val < 3 && val != soundEval.setting_freq_weight) {
 		soundEval.setting_freq_weight = val;
+		write_settings_to_proc_buffer();
 	}
 	return count;
 }
@@ -1804,7 +1826,12 @@ static ssize_t devAttrSndEvalSettingIntervalSec_store(struct device* dev,
 	if (ret < 0) {
 		return ret;
 	}
-	soundEval.setting_interval = val;
+
+	if (val != soundEval.setting_interval){
+		soundEval.setting_interval = val;
+		write_settings_to_proc_buffer();
+	}
+
 	return count;
 }
 
@@ -1824,6 +1851,7 @@ static ssize_t devAttrSndEvalSettingDisableService_store(struct device* dev,
 	}
 	if (val >= 0 && val < 2) {
 		soundEval.setting_disable_service = val;
+		write_settings_to_proc_buffer();
 	}
 	return count;
 }
@@ -2369,32 +2397,6 @@ static void cleanup(void) {
 	remove_proc_entry(procfs_folder_name, NULL);
 }
 
-int get_settings_line(char *line, int max, int start)
-{
-	int nch = 0;
-	int c;
-	max = max - 1; /* leave room for '\0' */
-	int i = start;
-
-	if (i >= procfs_buffer_size)
-		return 0;
-
-	while (i < procfs_buffer_size) {
-		c = procfs_buffer[i];
-		if (c == '\n')
-			break;
-
-		if (nch < max) {
-			line[nch] = c;
-			nch = nch + 1;
-		}
-		i++;
-	}
-
-	line[nch] = '\0';
-	return nch;
-}
-
 static int __init exosensepi_init(void) {
 	int result = 0;
 	int di, ai;
@@ -2402,30 +2404,12 @@ static int __init exosensepi_init(void) {
 	printk(KERN_INFO "exosensepi: - | init\n");
 
 	parent = proc_mkdir(procfs_folder_name, NULL);
-	entry = proc_create(procfs_setting_file_name, 0666, parent, &proc_fops);
+	entry = proc_create(procfs_setting_file_name, 0444, parent, &proc_fops);
 	if (!entry) {
 		return -1;
 	}
 
-	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
-	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s", default_settings[0], soundEval.setting_time_weight,
-				default_settings[1], soundEval.setting_freq_weight,
-				default_settings[2], soundEval.setting_interval,
-				default_settings[3],soundEval.setting_disable_service,
-				default_settings[4]);
-	memcpy(&procfs_buffer, tmp, strlen(tmp));
-	procfs_buffer_size = strlen(tmp);
-	kfree(tmp);
-
-//	char settings_line[SETTINGS_LINE_MAX_SIZE];
-//	int buffer_index = 0;
-//	int read_chars = 0;
-//	while (buffer_index < procfs_buffer_size) {
-//		read_chars = get_settings_line(settings_line, SETTINGS_LINE_MAX_SIZE, buffer_index) + 1;
-//		buffer_index = buffer_index + read_chars;
-////		printk("settings line is %s, buffer index is %d, read %d chars, total buffer %lu\n", settings_line, buffer_index, read_chars, procfs_buffer_size);
-//
-//	}
+	write_settings_to_proc_buffer();
 
 	i2c_add_driver(&exosensepi_i2c_driver);
 	mutex_init(&exosensepi_i2c_mutex);
