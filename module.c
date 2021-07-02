@@ -1901,7 +1901,7 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 
 			debounceBeans[db].debPastValue = actualGPIOStatus;
 
-			if (actualGPIOStatus == debounceBeans[db].debValue){
+			if (actualGPIOStatus == debounceBeans[db].debValue || debounceBeans[db].debValue == DEBOUNCE_STATE_NOT_DEFINED){
 				if (actualGPIOStatus) {
 					if (diff >= debounceBeans[db].debOffMinTime_usec) {
 						debounceBeans[db].debValue = 0;
