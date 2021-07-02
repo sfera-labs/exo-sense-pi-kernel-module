@@ -1032,7 +1032,7 @@ static ssize_t devAttrGpioDebOnCnt_show(struct device *dev,
 	if (dab->debBean->debPastValue == actualGPIOStatus
 			&& actualGPIOStatus
 			&& diff >= dab->debBean->debOnMinTime_usec
-			&& actualGPIOStatus != dab->debBean->debValue) {
+			&& (actualGPIOStatus != dab->debBean->debValue || dab->debBean->debOnStateCnt == 0)) {
 		res = dab->debBean->debOnStateCnt + 1;
 	}else{
 		res = dab->debBean->debOnStateCnt;
@@ -1057,7 +1057,7 @@ static ssize_t devAttrGpioDebOffCnt_show(struct device *dev,
 	if (dab->debBean->debPastValue == actualGPIOStatus
 			&& !actualGPIOStatus
 			&& diff >= dab->debBean->debOffMinTime_usec
-			&& actualGPIOStatus != dab->debBean->debValue) {
+			&& (actualGPIOStatus != dab->debBean->debValue || dab->debBean->debOffStateCnt == 0) {
 		res = dab->debBean->debOffStateCnt + 1;
 	}else{
 		res = dab->debBean->debOffStateCnt;
