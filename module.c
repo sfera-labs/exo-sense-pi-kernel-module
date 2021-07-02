@@ -1901,21 +1901,24 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 
 			debounceBeans[db].debPastValue = actualGPIOStatus;
 
-			if (actualGPIOStatus) {
-				if (diff >= debounceBeans[db].debOffMinTime_usec) {
-					debounceBeans[db].debValue = 0;
-					debounceBeans[db].debOffStateCnt =
-							debounceBeans[db].debOffStateCnt >= ULONG_MAX ?
-									0 : debounceBeans[db].debOffStateCnt + 1;
-				}
-			} else {
-				if (diff >= debounceBeans[db].debOnMinTime_usec) {
-					debounceBeans[db].debValue = 1;
-					debounceBeans[db].debOnStateCnt =
-							debounceBeans[db].debOnStateCnt >= ULONG_MAX ?
-									0 : debounceBeans[db].debOnStateCnt + 1;
+			if (actualGPIOStatus == debounceBeans[db].debValue){
+				if (actualGPIOStatus) {
+					if (diff >= debounceBeans[db].debOffMinTime_usec) {
+						debounceBeans[db].debValue = 0;
+						debounceBeans[db].debOffStateCnt =
+								debounceBeans[db].debOffStateCnt >= ULONG_MAX ?
+										0 : debounceBeans[db].debOffStateCnt + 1;
+					}
+				} else {
+					if (diff >= debounceBeans[db].debOnMinTime_usec && actualGPIOStatus == debounceBeans[db].debValue) {
+						debounceBeans[db].debValue = 1;
+						debounceBeans[db].debOnStateCnt =
+								debounceBeans[db].debOnStateCnt >= ULONG_MAX ?
+										0 : debounceBeans[db].debOnStateCnt + 1;
+					}
 				}
 			}
+
 			debounceBeans[db].lastDebIrqTs = now;
 			break;
 		}
