@@ -1029,13 +1029,15 @@ static ssize_t devAttrGpioDebOnCnt_show(struct device *dev,
 			(struct timespec64*) &dab->debBean->lastDebIrqTs, &now);
 
 	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
-	if (dab->debBean->debPastValue == actualGPIOStatus && actualGPIOStatus
-			&& diff >= dab->debBean->debOnMinTime_usec) {
-		res = dab->debBean->debOnStateCnt >= ULONG_MAX ?
-				0 : dab->debBean->debOnStateCnt + 1;;
+	if (dab->debBean->debPastValue == actualGPIOStatus
+			&& actualGPIOStatus
+			&& diff >= dab->debBean->debOnMinTime_usec
+			&& actualGPIOStatus != dab->debBean->debValue) {
+		res = dab->debBean->debOnStateCnt + 1;
 	}else{
 		res = dab->debBean->debOnStateCnt;
 	}
+
 	return sprintf(buf, "%lu\n", res);
 }
 
@@ -1052,10 +1054,11 @@ static ssize_t devAttrGpioDebOffCnt_show(struct device *dev,
 			(struct timespec64*) &dab->debBean->lastDebIrqTs, &now);
 
 	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
-	if (dab->debBean->debPastValue == actualGPIOStatus && !actualGPIOStatus
-			&& diff >= dab->debBean->debOffMinTime_usec) {
-		res = dab->debBean->debOffStateCnt >= ULONG_MAX ?
-				0 : dab->debBean->debOffStateCnt + 1;;
+	if (dab->debBean->debPastValue == actualGPIOStatus
+			&& !actualGPIOStatus
+			&& diff >= dab->debBean->debOffMinTime_usec
+			&& actualGPIOStatus != dab->debBean->debValue) {
+		res = dab->debBean->debOffStateCnt + 1;
 	}else{
 		res = dab->debBean->debOffStateCnt;
 	}
@@ -1901,21 +1904,20 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 
 			debounceBeans[db].debPastValue = actualGPIOStatus;
 
-			if (actualGPIOStatus) {
-				if (diff >= debounceBeans[db].debOffMinTime_usec) {
-					debounceBeans[db].debValue = 0;
-					debounceBeans[db].debOffStateCnt =
-							debounceBeans[db].debOffStateCnt >= ULONG_MAX ?
-									0 : debounceBeans[db].debOffStateCnt + 1;
-				}
-			} else {
-				if (diff >= debounceBeans[db].debOnMinTime_usec) {
-					debounceBeans[db].debValue = 1;
-					debounceBeans[db].debOnStateCnt =
-							debounceBeans[db].debOnStateCnt >= ULONG_MAX ?
-									0 : debounceBeans[db].debOnStateCnt + 1;
+			if (actualGPIOStatus == debounceBeans[db].debValue || debounceBeans[db].debValue == DEBOUNCE_STATE_NOT_DEFINED){
+				if (actualGPIOStatus) {
+					if (diff >= debounceBeans[db].debOffMinTime_usec) {
+						debounceBeans[db].debValue = 0;
+						debounceBeans[db].debOffStateCnt++;
+					}
+				} else {
+					if (diff >= debounceBeans[db].debOnMinTime_usec) {
+						debounceBeans[db].debValue = 1;
+						debounceBeans[db].debOnStateCnt++;
+					}
 				}
 			}
+
 			debounceBeans[db].lastDebIrqTs = now;
 			break;
 		}
