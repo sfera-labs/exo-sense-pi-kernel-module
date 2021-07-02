@@ -1910,7 +1910,7 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 										0 : debounceBeans[db].debOffStateCnt + 1;
 					}
 				} else {
-					if (diff >= debounceBeans[db].debOnMinTime_usec && actualGPIOStatus == debounceBeans[db].debValue) {
+					if (diff >= debounceBeans[db].debOnMinTime_usec) {
 						debounceBeans[db].debValue = 1;
 						debounceBeans[db].debOnStateCnt =
 								debounceBeans[db].debOnStateCnt >= ULONG_MAX ?
