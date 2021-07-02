@@ -211,9 +211,7 @@ struct SecElemBean {
 
 struct soundEvalResult {
 	long l_EQ;
-	unsigned long time_epoch_sec;
-	int time_epoch_millisec;
-
+	unsigned long long time_epoch_millisec;
 };
 
 struct SoundEvalBean {
@@ -426,11 +424,9 @@ static struct SoundEvalBean soundEval = {
 	.setting_disable_service = 1,
 
 	.period_res.l_EQ = -1.0,
-	.period_res.time_epoch_sec = 0,
 	.period_res.time_epoch_millisec = 0,
 
 	.interval_res.l_EQ = -1.0,
-	.interval_res.time_epoch_sec = 0,
 	.interval_res.time_epoch_millisec = 0,
 };
 
@@ -1744,29 +1740,25 @@ static ssize_t atecc608aSerial_show(struct device *dev,
 
 static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%ld %lu %03d\n", soundEval.period_res.l_EQ, soundEval.period_res.time_epoch_sec,
-			soundEval.period_res.time_epoch_millisec);
+	return sprintf(buf, "%ld %llu\n", soundEval.period_res.l_EQ, soundEval.period_res.time_epoch_millisec);
 	return sprintf(buf, "\n");
 }
 
 static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	sscanf(buf, "%ld %lu %d", &soundEval.period_res.l_EQ, &soundEval.period_res.time_epoch_sec,
-			&soundEval.period_res.time_epoch_millisec);
+	sscanf(buf, "%ld %llu", &soundEval.period_res.l_EQ, &soundEval.period_res.time_epoch_millisec);
 	return count;
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%ld %lu %03d\n", soundEval.interval_res.l_EQ, soundEval.interval_res.time_epoch_sec,
-			soundEval.interval_res.time_epoch_millisec);
+	return sprintf(buf, "%ld %llu\n", soundEval.interval_res.l_EQ, soundEval.interval_res.time_epoch_millisec);
 	return sprintf(buf, "\n");
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	sscanf(buf, "%ld %lu %d", &soundEval.interval_res.l_EQ, &soundEval.interval_res.time_epoch_sec,
-			&soundEval.interval_res.time_epoch_millisec);
+	sscanf(buf, "%ld %llu", &soundEval.interval_res.l_EQ, &soundEval.interval_res.time_epoch_millisec);
 	return count;
 }
 
