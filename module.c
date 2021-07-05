@@ -999,6 +999,9 @@ static ssize_t devAttrGpioDebMsOn_store(struct device *dev,
 	}
 	dab->debBean->debOnMinTime_usec = val * 1000;
 	dab->debBean->debOnStateCnt = 0;
+	dab->debBean->debOffStateCnt = 0;
+
+	dab->debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
 	return count;
 }
 
@@ -1012,7 +1015,10 @@ static ssize_t devAttrGpioDebMsOff_store(struct device *dev,
 		return ret;
 	}
 	dab->debBean->debOffMinTime_usec = val * 1000;
+	dab->debBean->debOnStateCnt = 0;
 	dab->debBean->debOffStateCnt = 0;
+
+	dab->debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
 	return count;
 }
 
