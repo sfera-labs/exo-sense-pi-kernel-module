@@ -1741,7 +1741,6 @@ static ssize_t atecc608aSerial_show(struct device *dev,
 static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
 	return sprintf(buf, "%ld %llu\n", soundEval.period_res.l_EQ, soundEval.period_res.time_epoch_millisec);
-	return sprintf(buf, "\n");
 }
 
 static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
@@ -1753,7 +1752,6 @@ static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
 static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
 	return sprintf(buf, "%ld %llu\n", soundEval.interval_res.l_EQ, soundEval.interval_res.time_epoch_millisec);
-	return sprintf(buf, "\n");
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
