@@ -313,8 +313,8 @@ It's not our goal to explain all the differences of classes of sound level meter
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|period_LEQ|R/W|*val* *UNIX_time_epoch_millis*|period evaluation result in milli decibels according to the set time and frequency weighting (dB, dB(A) or dB(C)) followed by the UNIX time epoch in milliseconds|
-|interval_LEQ|R/W|*val* *UNIX_time_epoch_millis*|interval evaluation result in milli decibels according to the set time and frequency weighting (dB, dB(A) or dB(C)) followed by the UNIX time epoch in milliseconds|
+|period_LEQ|R/W|*val* *UNIX_time_epoch_millis*|*val* is the result of the period evaluation, in milli decibels according to the set time and frequency weighting (dB, dB(A) or dB(C)). *UNIX_time_epoch_millis* is the UNIX time epoch in milliseconds. If `soundEval` utility is not working after reboot, *val* has value -1 and *UNIX_time_epoch_millis* has value 0.|
+|interval_LEQ|R/W|*val* *UNIX_time_epoch_millis*|*val* is the result of the interval evaluation, in milli decibels according to the set time and frequency weighting (dB, dB(A) or dB(C)). *UNIX_time_epoch_millis* is the UNIX time epoch in milliseconds. If `soundEval` utility is not working after reboot, *val* has value -1 and *UNIX_time_epoch_millis* has value 0.|
 |setting_disable_Service|R/W|0|Service enabled, audio card controlled by soundEval doing continuous evaluations|
 |setting_disable_Service|R/W|1|Service disabled, audio card free, soundEval utility not working. It's the default value at system reboot|
 |setting_time_weight|R/W|0|FAST time weighting selected|
@@ -324,6 +324,8 @@ It's not our goal to explain all the differences of classes of sound level meter
 |setting_freq_weight|R/W|1|Z-weight frequency weighting selected|
 |setting_freq_weight|R/W|2|C-weight frequency weighting selected|
 |setting_interval_sec|R/W|*val*|custom interval of evaluation in seconds|
+
+At system reboot, the default settings are: setting_disable_Service = 1, setting_time_weight = 0, setting_freq_weight = 0, setting_interval_sec = 0.
 
 ### <a name="sec-elem"></a>Secure Element - `/sys/class/exosensepi/sec_elem/`
 
