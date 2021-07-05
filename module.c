@@ -53,7 +53,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("1.1");
+MODULE_VERSION("1.2");
 
 static int temp_calib_m = -1000;
 module_param(temp_calib_m, int, S_IRUGO);
@@ -999,6 +999,9 @@ static ssize_t devAttrGpioDebMsOn_store(struct device *dev,
 	}
 	dab->debBean->debOnMinTime_usec = val * 1000;
 	dab->debBean->debOnStateCnt = 0;
+	dab->debBean->debOffStateCnt = 0;
+
+	dab->debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
 	return count;
 }
 
@@ -1012,7 +1015,10 @@ static ssize_t devAttrGpioDebMsOff_store(struct device *dev,
 		return ret;
 	}
 	dab->debBean->debOffMinTime_usec = val * 1000;
+	dab->debBean->debOnStateCnt = 0;
 	dab->debBean->debOffStateCnt = 0;
+
+	dab->debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
 	return count;
 }
 

@@ -123,7 +123,7 @@ For each digital input, we also expose:
 * 2 state counters ("on" for high state and "off" for low state)
 
 The debounce times for each DI has been splitted in "on" and "off" in order to make the debounce feature more versatile and suited for particular application needs (e.g. if we consider digital input 1, and set its debounce "on" time to 50ms and its debounce "off" time to 0ms, we just created a delay-on type control for digital input 1 with delay-on time equal to 50ms).    
-Change in value of a debounce time automatically reset its state counter to the value of 0.    
+Change in value of a debounce time automatically resets both counters.    
 The debounce state of each digital input at system start is UNDEFINED (-1), because if the signal on the specific channel cannot remain stable for a period of time greater than the ones defined as debounce "on" and "off" times, we are not able to provide a valid result. 
 
 |File|R/W|Value|Description|
