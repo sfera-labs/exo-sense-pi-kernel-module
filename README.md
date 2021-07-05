@@ -16,6 +16,7 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [Buzzer](#buzzer)
     - [Wiegand](#wiegand)
     - [Microphone](#microphone)
+    - [Sound Evaluation Utility - SoundEval](#soundEval)
     - [Secure element](#sec-elem)
     - [1-Wire](#1wire)
 
@@ -52,6 +53,12 @@ If you want to use TTL1 as 1-Wire bus, add this line too:
 
     dtoverlay=w1-gpio
 
+Optionally, to be able to use `soundEval` (sound level evaluation utility), specifically created for ExoSense Pi:
+
+    sh install-snd-eval.sh
+    
+This script will install 2 required libraries for the `soundEval` utility: `libasound2-dev` and `libfftw3-dev`. The installed version of `libasound2-dev` must be `>=1.1.8-1+rpt1`, and the installed version of `libfftw3-dev` must be `>=3.3.8-2`.
+    
 Optionally, to be able to use the `/sys/class/exosensepi/` files not as super user, create a new group "exosensepi" and set it as the module owner group by adding an udev rule:
 
     sudo groupadd exosensepi
@@ -263,6 +270,60 @@ Press <kbd>F4</kbd> to select the "Capture" view , adjust the volume with the up
 You can now record from the `dmic_sv` device with adjusted volume:
 
     arecord -D dmic_sv -c2 -r 44100 -f S32_LE -t wav -V mono -v rec-vol.wav
+    
+### <a name="soundEval "></a>SoundEval Sound Level Evaluation Utility - `/sys/class/exosensepi/sound_eval/`
+
+In addiction to the standard operations provided by the ALSA drivers, we have integrated also `soundEval`, which is the sound level evaluation utility provided by Sferalabs, specifically designed around its I2S MEMS microphone.
+To be able to use `soundEval` utility, its installation is required. We have prepared an installation script runnable with `sh install-snd-eval.sh` command, which takes care of library dependencies and install/enable of the linux service associated to `soundEval` utility.
+Once the installation command `sh install-snd-eval.sh` has terminated. Reboot the system.
+At system reboot, the installed linux service with `soundEval` utility is always running, but it's in its disabled state (not evaluating). This choice is specifically made because when running in enabled state (evaluating), `soundEval` utility takes control of the `exosense-pi` audio card, not permitting other operations on the microphone as the recording of a WAV audio. The choice to enable/disable has been left to the end user on purpose, because it's not possible to make sound level evaluations and recording of audio with the same microphone/audio card.
+
+The `soundEval` utility is not intended to be used as a professional sound level meter, but it's capable
+to provide the results of different classes of sound level meters (LEQ = Equivalent Continuous Sound Level), such as:
+     - LAEQ,F = Equiv. contin. sound level with fast time weighting and A frequency weighting
+                (time weighting = fast 125ms, A-weighting frequency weighting, results in dB(A))
+     - LAEQ,S = Equiv. contin. sound level with slow time weighting and A frequency weighting
+                (time weighting = slow 1000ms, A-weighting frequency weighting, results in dB(A))
+     - LAEQ,I = Equiv. contin. sound level with impulse time weighting and A frequency weighting
+                (time weighting = impulse 35ms, A-weighting frequency weighting, results in dB(A))
+     - LEQ,F  = Equiv. contin. sound level with fast time weighting and without frequency weighting
+                (time weighting = fast 125ms, no frequency weighting, results in dB)
+     - LEQ,S  = Equiv. contin. sound level with slow time weighting and without frequency weighting
+                (time weighting = slow 1000ms, no frequency weighting, results in dB)
+     - LEQ,I  = Equiv. contin. sound level with impulse time weighting and without frequency weighting
+                (time weighting = impulse 35ms, no frequency weighting, results in dB)
+     - LCEQ,F = Equiv. contin. sound level with fast time weighting and C frequency weighting
+                (time weighting = fast 125ms, C-weighting frequency weighting, results in dB(C))
+     - LCEQ,S = Equiv. contin. sound level with slow time weighting and C frequency weighting
+                (time weighting = slow 1000ms, C-weighting frequency weighting, results in dB(C))
+     - LCEQ,I = Equiv. contin. sound level with impulse time weighting and C frequency weighting
+                (time weighting = impulse 35ms, C-weighting frequency weighting, results in dB(C))
+
+The `soundEval` utility essentially performs 2 types of analysis:
+1- Continuous evaluation of a period of time (125ms if time weight = fast, 1000ms if time weight = slow, 35ms if time weight = impulse). This type of evaluation is commonly used to build applications as classifier of specific events/sounds. E.g. if our purpose is to detect fast impulse sounds as gun shots or explosions, we may use an LAEQ,I type period evaluation,and  when the sound level is above a certain threshold, it's possible to trigger immediate actions right after the detection.
+2- Continous evaluation of a custom interval of time. In addition to the period evaluation, we added also the sound level evaluation for any interval of time, specified by the user, in seconds. This type of evaluation is suited for applications where the period of time in analysis is bigger than the time constants fast, slow or impulse. An example of application is where we analyze an interval of 8 working hours with a LAEQ,F type sound meter (commands -f a -t f -i 28800), and if the equivalent continuous sound level is bigger than the threshold specified by the legislation regarding the maximum sound level in a working environment (usually 85dB(A)), we know that it's time to consider the use of personal sound protective equipment.
+
+It's not our goal to explain all the differences of classes of sound level meters, but we'd like to introduce some general rules, with hope that it will be helpful to the user for the right choice:
+- FAST TIME WEIGHT is usually used to replicate the natural response of human ear (125ms)
+- SLOW TIME WEIGHT is good at "ignoring" short, fast sounds like car doors slamming or balloons popping. his makes slow weighting a good choice for environmental noise studies, especially for studies that span many hours or even days.
+- IMPULSE TIME WEIGHT is usually used in situations where there are sharp impulsive noises to be measured, such as fireworks or gunshots.
+- A-WEIGHTING FREQ WEIGHT: the data are frequency weighted according to the A-WEIGHTING function, which main puropose is to replicate the human ear response at different frequency bandwidths.
+- Z-WEIGHTING FREQ WEIGHT: no frequency adjustments are made in base to the frequency bandwidths.
+- C-WEIGHTING FREQ WEIGHT: flat response with the extreme high (near 20kHz) and low (near 0 Hz) frequencies attenuated.
+
+|File|R/W|Value|Description|
+|----|:---:|:-:|-----------|
+|period_LEQ|R/W|*val* *UNIX_time_epoch_millis*|period evaluation result in milli decibels according to the set time and frequency weighting (dB, dB(A) or dB(C)) followed by the UNIX time epoch in milliseconds|
+|interval_LEQ|R/W|*val* *UNIX_time_epoch_millis*|interval evaluation result in milli decibels according to the set time and frequency weighting (dB, dB(A) or dB(C)) followed by the UNIX time epoch in milliseconds|
+|setting_disable_Service|R/W|0|Service enabled, audio card controlled by soundEval doing continuous evaluations|
+|setting_disable_Service|R/W|1|Service disabled, audio card free, soundEval utility not working. It's the default value at system reboot|
+|setting_time_weight|R/W|0|FAST time weighting selected|
+|setting_time_weight|R/W|1|SLOW time weighting selected|
+|setting_time_weight|R/W|2|IMPULSE time weighting selected|
+|setting_freq_weight|R/W|0|A-weight frequency weighting selected|
+|setting_freq_weight|R/W|1|Z-weight frequency weighting selected|
+|setting_freq_weight|R/W|2|C-weight frequency weighting selected|
+|setting_interval_sec|R/W|*val*|custom interval of evaluation in seconds|
 
 ### <a name="sec-elem"></a>Secure Element - `/sys/class/exosensepi/sec_elem/`
 
