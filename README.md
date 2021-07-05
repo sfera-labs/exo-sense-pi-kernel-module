@@ -271,15 +271,19 @@ You can now record from the `dmic_sv` device with adjusted volume:
 
     arecord -D dmic_sv -c2 -r 44100 -f S32_LE -t wav -V mono -v rec-vol.wav
     
-### <a name="soundEval "></a>SoundEval Sound Level Evaluation Utility - `/sys/class/exosensepi/sound_eval/`
+### <a name="soundEval"></a>SoundEval Sound Level Evaluation Utility - `/sys/class/exosensepi/sound_eval/`
 
 In addiction to the standard operations provided by the ALSA drivers, we have integrated also `soundEval`, which is the sound level evaluation utility provided by Sferalabs, specifically designed around its I2S MEMS microphone.
+
 To be able to use `soundEval` utility, its installation is required. We have prepared an installation script runnable with `sh install-snd-eval.sh` command, which takes care of library dependencies and install/enable of the linux service associated to `soundEval` utility.
+
 Once the installation command `sh install-snd-eval.sh` has terminated. Reboot the system.
+
 At system reboot, the installed linux service with `soundEval` utility is always running, but it's in its disabled state (not evaluating). This choice is specifically made because when running in enabled state (evaluating), `soundEval` utility takes control of the `exosense-pi` audio card, not permitting other operations on the microphone as the recording of a WAV audio. The choice to enable/disable has been left to the end user on purpose, because it's not possible to make sound level evaluations and recording of audio with the same microphone/audio card.
 
 The `soundEval` utility is not intended to be used as a professional sound level meter, but it's capable
 to provide the results of different classes of sound level meters (LEQ = Equivalent Continuous Sound Level), such as:
+
      - LAEQ,F = Equiv. contin. sound level with fast time weighting and A frequency weighting
                 (time weighting = fast 125ms, A-weighting frequency weighting, results in dB(A))
      - LAEQ,S = Equiv. contin. sound level with slow time weighting and A frequency weighting
@@ -299,8 +303,10 @@ to provide the results of different classes of sound level meters (LEQ = Equival
      - LCEQ,I = Equiv. contin. sound level with impulse time weighting and C frequency weighting
                 (time weighting = impulse 35ms, C-weighting frequency weighting, results in dB(C))
 
-The `soundEval` utility essentially performs 2 types of analysis:
+he `soundEval` utility essentially performs 2 types of analysis:
+
 1- Continuous evaluation of a period of time (125ms if time weight = fast, 1000ms if time weight = slow, 35ms if time weight = impulse). This type of evaluation is commonly used to build applications as classifier of specific events/sounds. E.g. if our purpose is to detect fast impulse sounds as gun shots or explosions, we may use an LAEQ,I type period evaluation,and  when the sound level is above a certain threshold, it's possible to trigger immediate actions right after the detection.
+
 2- Continous evaluation of a custom interval of time. In addition to the period evaluation, we added also the sound level evaluation for any interval of time, specified by the user, in seconds. This type of evaluation is suited for applications where the period of time in analysis is bigger than the time constants fast, slow or impulse. An example of application is where we analyze an interval of 8 working hours with a LAEQ,F type sound meter (commands -f a -t f -i 28800), and if the equivalent continuous sound level is bigger than the threshold specified by the legislation regarding the maximum sound level in a working environment (usually 85dB(A)), we know that it's time to consider the use of personal sound protective equipment.
 
 It's not our goal to explain all the differences of classes of sound level meters, but we'd like to introduce some general rules, with hope that it will be helpful to the user for the right choice:
