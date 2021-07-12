@@ -1781,13 +1781,13 @@ static ssize_t devAttrSndEvalTimeWeight_show(struct device* dev, struct device_a
 
 	switch (soundEval.setting_time_weight)
 	        {
-	        case 0:
+	        case FAST_WEIGHTING:
 	        	val = fast_weight_string;
 				break;
-	        case 1:
+	        case SLOW_WEIGHTING:
 	        	val = slow_weight_string;
 				break;
-	        case 2:
+	        case IMPULSE_WEIGHTING:
 	        	val = impulse_weight_string;
 	        	break;
 	        default:
@@ -1827,13 +1827,13 @@ static ssize_t devAttrSndEvalFreqWeight_show(struct device* dev, struct device_a
 
 	switch (soundEval.setting_freq_weight)
 	        {
-	        case 0:
+	        case A_WEIGHTING:
 	        	val = a_weight_string;
 				break;
-	        case 1:
+	        case Z_WEIGHTING:
 	        	val = z_weight_string;
 				break;
-	        case 2:
+	        case C_WEIGHTING:
 	        	val = c_weight_string;
 	        	break;
 	        default:
