@@ -58,6 +58,20 @@
 
 #define PROCFS_MAX_SIZE 1024
 
+enum snd_time_weighting_mode {
+	FAST_WEIGHTING, SLOW_WEIGHTING, IMPULSE_WEIGHTING
+};
+const char fast_weight_string[] = "f";
+const char slow_weight_string[] = "s";
+const char impulse_weight_string[] = "i";
+
+enum snd_frequency_weighting_mode {
+	A_WEIGHTING, Z_WEIGHTING, C_WEIGHTING
+};
+const char a_weight_string[] = "a";
+const char z_weight_string[] = "z";
+const char c_weight_string[] = "c";
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
@@ -86,8 +100,8 @@ const char default_settings[][PROCFS_MAX_SIZE] = {
 		},
 		{
 			"\n"
-			"period-result=/sys/class/exosensepi/sound_eval/period_LEQ\n"
-			"interval-result=/sys/class/exosensepi/sound_eval/interval_LEQ\n"
+			"period-result=/sys/class/exosensepi/sound_eval/period_leq\n"
+			"interval-result=/sys/class/exosensepi/sound_eval/interval_leq\n"
 			"continuous=1\n"
 			"interval-only=0\n"
 			"quiet=1\n"
@@ -218,7 +232,7 @@ struct SoundEvalBean {
 	unsigned int setting_time_weight;
 	unsigned int setting_freq_weight;
 	unsigned long setting_interval;
-	unsigned int setting_disable_service;
+	unsigned int setting_enable_utility;
 
 	struct soundEvalResult period_res;
 	struct soundEvalResult interval_res;
@@ -301,28 +315,28 @@ static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_
 static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalSettingTimeWeight_show(struct device* dev, struct device_attribute* attr,
+static ssize_t devAttrSndEvalTimeWeight_show(struct device* dev, struct device_attribute* attr,
 		char *buf);
 
-static ssize_t devAttrSndEvalSettingTimeWeight_store(struct device* dev,
+static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalSettingFreqWeight_show(struct device* dev, struct device_attribute* attr,
+static ssize_t devAttrSndEvalFreqWeight_show(struct device* dev, struct device_attribute* attr,
 		char *buf);
 
-static ssize_t devAttrSndEvalSettingFreqWeight_store(struct device* dev,
+static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalSettingIntervalSec_show(struct device* dev, struct device_attribute* attr,
+static ssize_t devAttrSndEvalIntervalSec_show(struct device* dev, struct device_attribute* attr,
 		char *buf);
 
-static ssize_t devAttrSndEvalSettingIntervalSec_store(struct device* dev,
+static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalSettingDisableService_show(struct device* dev, struct device_attribute* attr,
+static ssize_t devAttrSndEvalEnableUtility_show(struct device* dev, struct device_attribute* attr,
 		char *buf);
 
-static ssize_t devAttrSndEvalSettingDisableService_store(struct device* dev,
+static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
@@ -421,7 +435,7 @@ static struct SoundEvalBean soundEval = {
 	.setting_time_weight = 0,
 	.setting_freq_weight = 0,
 	.setting_interval = 0,
-	.setting_disable_service = 1,
+	.setting_enable_utility = 0,
 
 	.period_res.l_EQ = -1.0,
 	.period_res.time_epoch_millisec = 0,
@@ -869,8 +883,8 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "period_LEQ",
-				.mode = 0660,
+				.name = "period_leq",
+				.mode = 0640,
 			},
 			.show = devAttrSndEvalPeriodLEQ_show,
 			.store = devAttrSndEvalPeriodLEQ_store,
@@ -880,8 +894,8 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "interval_LEQ",
-				.mode = 0660,
+				.name = "interval_leq",
+				.mode = 0640,
 			},
 			.show = devAttrSndEvalIntervalLEQ_show,
 			.store = devAttrSndEvalIntervalLEQ_store,
@@ -891,44 +905,44 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "setting_time_weight",
+				.name = "time_weight",
 				.mode = 0660,
 			},
-			.show = devAttrSndEvalSettingTimeWeight_show,
-			.store = devAttrSndEvalSettingTimeWeight_store,
+			.show = devAttrSndEvalTimeWeight_show,
+			.store = devAttrSndEvalTimeWeight_store,
 		},
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "setting_freq_weight",
+				.name = "freq_weight",
 				.mode = 0660,
 			},
-			.show = devAttrSndEvalSettingFreqWeight_show,
-			.store = devAttrSndEvalSettingFreqWeight_store,
+			.show = devAttrSndEvalFreqWeight_show,
+			.store = devAttrSndEvalFreqWeight_store,
 		},
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "setting_interval_sec",
+				.name = "interval_sec",
 				.mode = 0660,
 			},
-			.show = devAttrSndEvalSettingIntervalSec_show,
-			.store = devAttrSndEvalSettingIntervalSec_store,
+			.show = devAttrSndEvalIntervalSec_show,
+			.store = devAttrSndEvalIntervalSec_store,
 		},
 	},
 
 	{
 		.devAttr = {
 			.attr = {
-				.name = "setting_disable_service",
+				.name = "enabled",
 				.mode = 0660,
 			},
-			.show = devAttrSndEvalSettingDisableService_show,
-			.store = devAttrSndEvalSettingDisableService_store,
+			.show = devAttrSndEvalEnableUtility_show,
+			.store = devAttrSndEvalEnableUtility_store,
 		},
 	},
 
@@ -1085,7 +1099,7 @@ void write_settings_to_proc_buffer(void){
 	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s", default_settings[0], soundEval.setting_time_weight,
 				default_settings[1], soundEval.setting_freq_weight,
 				default_settings[2], soundEval.setting_interval,
-				default_settings[3], soundEval.setting_disable_service,
+				default_settings[3], !soundEval.setting_enable_utility,
 				default_settings[4]);
 	memcpy(&procfs_buffer, tmp, strlen(tmp));
 	procfs_buffer_size = strlen(tmp);
@@ -1760,54 +1774,105 @@ static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrSndEvalSettingTimeWeight_show(struct device* dev, struct device_attribute* attr,
+static ssize_t devAttrSndEvalTimeWeight_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%d\n", soundEval.setting_time_weight);
+
+	const char *val;
+
+	switch (soundEval.setting_time_weight)
+	        {
+	        case 0:
+	        	val = fast_weight_string;
+				break;
+	        case 1:
+	        	val = slow_weight_string;
+				break;
+	        case 2:
+	        	val = impulse_weight_string;
+	        	break;
+	        default:
+	        	soundEval.setting_time_weight = FAST_WEIGHTING;
+	        	val = fast_weight_string;
+	            break;
+	        }
+
+	return sprintf(buf, "%s\n", val);
 }
 
-static ssize_t devAttrSndEvalSettingTimeWeight_store(struct device* dev,
+static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	int ret;
-	unsigned int val;
+	char buffer_string[256];
+	sscanf(buf, "%s", buffer_string);
 
-	ret = kstrtouint(buf, 10, &val);
-	if (ret < 0) {
-		return ret;
+	unsigned int ret = soundEval.setting_time_weight;
+	if (strcmp(buffer_string, fast_weight_string) == 0) {
+		ret = FAST_WEIGHTING;
+	} else if (strcmp(buffer_string, slow_weight_string) == 0) {
+		ret = SLOW_WEIGHTING;
+	} else if (strcmp(buffer_string, impulse_weight_string) == 0) {
+		ret = IMPULSE_WEIGHTING;
 	}
-	if (val >= 0 && val < 3 && val != soundEval.setting_time_weight) {
-		soundEval.setting_time_weight = val;
+
+	if (ret != soundEval.setting_time_weight) {
+		soundEval.setting_time_weight = ret;
 		write_settings_to_proc_buffer();
 	}
+
 	return count;
 }
 
-static ssize_t devAttrSndEvalSettingFreqWeight_show(struct device* dev, struct device_attribute* attr,
+static ssize_t devAttrSndEvalFreqWeight_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%d\n", soundEval.setting_freq_weight);
+	const char *val;
+
+	switch (soundEval.setting_freq_weight)
+	        {
+	        case 0:
+	        	val = a_weight_string;
+				break;
+	        case 1:
+	        	val = z_weight_string;
+				break;
+	        case 2:
+	        	val = c_weight_string;
+	        	break;
+	        default:
+	        	soundEval.setting_freq_weight = A_WEIGHTING;
+	        	val = a_weight_string;
+	            break;
+	        }
+
+	return sprintf(buf, "%s\n", val);
 }
 
-static ssize_t devAttrSndEvalSettingFreqWeight_store(struct device* dev,
+static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	int ret;
-	unsigned int val;
+	char buffer_string[256];
+	sscanf(buf, "%s", buffer_string);
 
-	ret = kstrtouint(buf, 10, &val);
-	if (ret < 0) {
-		return ret;
+	unsigned int ret = soundEval.setting_freq_weight;
+	if (strcmp(buffer_string, a_weight_string) == 0) {
+		ret = A_WEIGHTING;
+	} else if (strcmp(buffer_string, z_weight_string) == 0) {
+		ret = Z_WEIGHTING;
+	} else if (strcmp(buffer_string, c_weight_string) == 0) {
+		ret = C_WEIGHTING;
 	}
-	if (val >= 0 && val < 3 && val != soundEval.setting_freq_weight) {
-		soundEval.setting_freq_weight = val;
+
+	if (ret != soundEval.setting_freq_weight) {
+		soundEval.setting_freq_weight = ret;
 		write_settings_to_proc_buffer();
 	}
+
 	return count;
 }
 
-static ssize_t devAttrSndEvalSettingIntervalSec_show(struct device* dev, struct device_attribute* attr,
+static ssize_t devAttrSndEvalIntervalSec_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
 	return sprintf(buf, "%lu\n", soundEval.setting_interval);
 }
 
-static ssize_t devAttrSndEvalSettingIntervalSec_store(struct device* dev,
+static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
 	int ret;
 	long val;
@@ -1825,12 +1890,12 @@ static ssize_t devAttrSndEvalSettingIntervalSec_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrSndEvalSettingDisableService_show(struct device* dev, struct device_attribute* attr,
+static ssize_t devAttrSndEvalEnableUtility_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%d\n", soundEval.setting_disable_service);
+	return sprintf(buf, "%d\n", soundEval.setting_enable_utility);
 }
 
-static ssize_t devAttrSndEvalSettingDisableService_store(struct device* dev,
+static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
 	int ret;
 	unsigned int val;
@@ -1840,7 +1905,7 @@ static ssize_t devAttrSndEvalSettingDisableService_store(struct device* dev,
 		return ret;
 	}
 	if (val >= 0 && val < 2) {
-		soundEval.setting_disable_service = val;
+		soundEval.setting_enable_utility = val;
 		write_settings_to_proc_buffer();
 	}
 	return count;

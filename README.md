@@ -273,15 +273,9 @@ You can now record from the `dmic_sv` device with adjusted volume:
     
 ### <a name="soundEval"></a>SoundEval Sound Level Evaluation Utility - `/sys/class/exosensepi/sound_eval/`
 
-In addiction to the standard operations provided by the ALSA drivers, we have integrated also `soundEval`, which is the sound level evaluation utility provided by Sferalabs, specifically designed around its I2S MEMS microphone.
+`soundEval` is the sound level evaluation utility developed by SferaLabs. It is included with ExoSensePi's kernel module as binary file.
 
-To be able to use `soundEval` utility, installation is required. We have prepared an installation script runnable with `sh install-snd-eval.sh` command, which takes care of library dependencies and it installs/enables the Linux service associated to `soundEval` utility.
-
-Once the installation command `sh install-snd-eval.sh` has terminated. System reboot is required.
-
-At system reboot, the installed Linux service associated to `soundEval` utility is always running, but it's in its disabled state (not evaluating). This choice is specifically made because when running in enabled state (evaluating), `soundEval` utility takes control of the `exosense-pi` audio card, not permitting other operations on the microphone as the recording of a WAV audio. The choice to enable/disable has been left to the end user on purpose, because it's not possible to make sound level evaluations and recording of audio with the same microphone/audio card.
-
-The `soundEval` utility is not intended to be used as a professional sound level meter, but it's capable to provide the results of different classes of sound level meters (LEQ = Equivalent Continuous Sound Level), such as:
+The `soundEval` utility is capable to provide the results of different classes of sound level meters (LEQ = Equivalent Continuous Sound Level), such as:
 
      - LAEQ,F = Equiv. contin. sound level with fast time weighting and A frequency weighting
                 (time weighting = fast 125ms, A-weighting frequency weighting, results in dB(A))
@@ -318,19 +312,19 @@ It's not our goal to explain all the differences of classes of sound level meter
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|period_LEQ|R/W|*val* *UNIX_time_epoch_millis*|*val* is the result of the period evaluation, in milli decibels according to the set time and frequency weighting (dB, dB(A) or dB(C)). *UNIX_time_epoch_millis* is the UNIX time epoch in milliseconds. If `soundEval` utility is not working after reboot, *val* has value -1 and *UNIX_time_epoch_millis* has value 0.|
-|interval_LEQ|R/W|*val* *UNIX_time_epoch_millis*|*val* is the result of the interval evaluation, in milli decibels according to the set time and frequency weighting (dB, dB(A) or dB(C)). *UNIX_time_epoch_millis* is the UNIX time epoch in milliseconds. If `soundEval` utility is not working after reboot, *val* has value -1 and *UNIX_time_epoch_millis* has value 0.|
-|setting_disable_Service|R/W|0|Service enabled, audio card controlled by soundEval doing continuous evaluations|
-|setting_disable_Service|R/W|1|Service disabled, audio card free, soundEval utility not working. It's the default value at system reboot|
-|setting_time_weight|R/W|0|FAST time weighting selected|
-|setting_time_weight|R/W|1|SLOW time weighting selected|
-|setting_time_weight|R/W|2|IMPULSE time weighting selected|
-|setting_freq_weight|R/W|0|A-weight frequency weighting selected|
-|setting_freq_weight|R/W|1|Z-weight frequency weighting selected|
-|setting_freq_weight|R/W|2|C-weight frequency weighting selected|
-|setting_interval_sec|R/W|*val*|custom interval of evaluation in seconds|
+|enabled|R/W|0|Utility enabled, audio card controlled by soundEval utility which performs continuous evaluations|
+|enabled|R/W|1|Utility disabled, audio card free, soundEval utility not evaluating.|
+|period_leq|R|*val* *ts*|*val* is the result of the period evaluation, in millidecibels according to the set time (fast, slow or impulse) and frequency weighting (dB, dB(A) or dB(C)). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds.|
+|interval_leq|R|*val* *ts*|*val* is the result of the interval evaluation, in millidecibels according to the set time (fast, slow or impulse) and frequency weighting (dB, dB(A) or dB(C)). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds.|
+|time_weight|R/W|f|FAST time weighting selected|
+|time_weight|R/W|s|SLOW time weighting selected|
+|time_weight|R/W|i|IMPULSE time weighting selected|
+|freq_weight|R/W|a|A-weight frequency weighting selected|
+|freq_weight|R/W|z|Z-weight frequency weighting selected|
+|freq_weight|R/W|c|C-weight frequency weighting selected|
+|interval_sec|R/W|*val*|*val* is the custom interval of evaluation in seconds|
 
-At system reboot, the default settings are: setting_disable_Service = 1, setting_time_weight = 0, setting_freq_weight = 0, setting_interval_sec = 0.
+At system reboot, the default settings are: enabled = 0, time_weight = 0, freq_weight = 0, interval_sec = 0.
 
 ### <a name="sec-elem"></a>Secure Element - `/sys/class/exosensepi/sec_elem/`
 

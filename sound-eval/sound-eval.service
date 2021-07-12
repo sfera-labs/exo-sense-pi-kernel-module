@@ -5,6 +5,7 @@ Description=Sound_evaluation_utility_for_exosensepi
 Type=simple
 ExecStart=/usr/local/bin/sound-eval.sh
 Restart=always
+User=root
 
 [Install]
 WantedBy=multi-user.target
