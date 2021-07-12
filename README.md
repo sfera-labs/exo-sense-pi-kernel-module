@@ -322,7 +322,7 @@ It's not our goal to explain all the differences of classes of sound level meter
 |freq_weight|R/W|a|A-weight frequency weighting selected|
 |freq_weight|R/W|z|Z-weight frequency weighting selected|
 |freq_weight|R/W|c|C-weight frequency weighting selected|
-|interval_sec|R/W|*val*|*val* is the custom interval of evaluation in seconds|
+|interval_sec|R/W|*val*|*val* is the custom interval of evaluation in seconds. If set to 0, the interval evaluation is not running and the interval_leq file with interval evaluation result is not updated.|
 
 At system reboot, the default settings are: enabled = 0, time_weight = 0, freq_weight = 0, interval_sec = 0.
 
