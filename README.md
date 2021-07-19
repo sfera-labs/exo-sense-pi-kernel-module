@@ -311,16 +311,16 @@ Explaining all the different classes of sound level meters is out of the scope o
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|enabled|R/W|0|Utility enabled, audio card controlled by soundEval utility|
-|enabled|R/W|1|Utility disabled, audio card available|
+|enabled|R/W|0|Utility disabled, audio card available|
+|enabled|R/W|1|Utility enabled, audio card controlled by soundEval utility|
 |leq_period|R|*val* *ts*|*val* is the result of the period evaluation, in millidecibels according to the set time (fast, slow or impulse) and frequency weighting (dB, dB(A) or dB(C)). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val* has value -1 and *ts* has value 0.|
 |leq_interval|R|*val* *ts*|*val* is the result of the interval evaluation, in millidecibels according to the set time (fast, slow or impulse) and frequency weighting (dB, dB(A) or dB(C)). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val* has value -1 and *ts* has value 0.|
-|weight_time|R/W|F|FAST time weighting selected|
-|weight_time|R/W|S|SLOW time weighting selected|
-|weight_time|R/W|I|IMPULSE time weighting selected|
-|weight_freq|R/W|A|A-weight frequency weighting selected|
-|weight_freq|R/W|Z|Z-weight frequency weighting selected|
-|weight_freq|R/W|C|C-weight frequency weighting selected|
+|weight_time|R/W|f|FAST time weighting selected|
+|weight_time|R/W|s|SLOW time weighting selected|
+|weight_time|R/W|i|IMPULSE time weighting selected|
+|weight_freq|R/W|a|A-weight frequency weighting selected|
+|weight_freq|R/W|z|Z-weight frequency weighting selected|
+|weight_freq|R/W|c|C-weight frequency weighting selected|
 |interval_sec|R/W|*val*|*val* is the custom interval of evaluation in seconds. If set to 0, the interval evaluation is not running and the leq_interval file with interval evaluation result is not updated|
 
 ### <a name="sec-elem"></a>Secure Element - `/sys/class/exosensepi/sec_elem/`
