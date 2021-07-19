@@ -100,8 +100,8 @@ const char default_settings[][PROCFS_MAX_SIZE] = {
 		},
 		{
 			"\n"
-			"period-result=/sys/class/exosensepi/sound_eval/period_leq\n"
-			"interval-result=/sys/class/exosensepi/sound_eval/interval_leq\n"
+			"period-result=/sys/class/exosensepi/sound_eval/leq_period\n"
+			"interval-result=/sys/class/exosensepi/sound_eval/leq_interval\n"
 			"continuous=1\n"
 			"interval-only=0\n"
 			"quiet=1\n"
@@ -883,7 +883,7 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "period_leq",
+				.name = "leq_period",
 				.mode = 0640,
 			},
 			.show = devAttrSndEvalPeriodLEQ_show,
@@ -894,7 +894,7 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "interval_leq",
+				.name = "leq_interval",
 				.mode = 0640,
 			},
 			.show = devAttrSndEvalIntervalLEQ_show,
@@ -905,7 +905,7 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "time_weight",
+				.name = "weight_time",
 				.mode = 0660,
 			},
 			.show = devAttrSndEvalTimeWeight_show,
@@ -916,7 +916,7 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
-				.name = "freq_weight",
+				.name = "weight_freq",
 				.mode = 0660,
 			},
 			.show = devAttrSndEvalFreqWeight_show,
