@@ -16,6 +16,7 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [Buzzer](#buzzer)
     - [Wiegand](#wiegand)
     - [Microphone](#microphone)
+    - [Sound Evaluation Utility - SoundEval](#soundEval)
     - [Secure element](#sec-elem)
     - [1-Wire](#1wire)
 
@@ -52,6 +53,12 @@ If you want to use TTL1 as 1-Wire bus, add this line too:
 
     dtoverlay=w1-gpio
 
+Optionally, to be able to use `soundEval` (sound level evaluation utility), specifically created for ExoSense Pi:
+
+    sh install-snd-eval.sh
+    
+This script will install 2 required libraries for the `soundEval` utility: `libasound2-dev` and `libfftw3-dev`. The installed version of `libasound2-dev` must be `>=1.1.8-1+rpt1`, and the installed version of `libfftw3-dev` must be `>=3.3.8-2`.
+    
 Optionally, to be able to use the `/sys/class/exosensepi/` files not as super user, create a new group "exosensepi" and set it as the module owner group by adding an udev rule:
 
     sudo groupadd exosensepi
@@ -263,6 +270,58 @@ Press <kbd>F4</kbd> to select the "Capture" view , adjust the volume with the up
 You can now record from the `dmic_sv` device with adjusted volume:
 
     arecord -D dmic_sv -c2 -r 44100 -f S32_LE -t wav -V mono -v rec-vol.wav
+    
+### <a name="soundEval"></a>SoundEval Sound Level Evaluation Utility - `/sys/class/exosensepi/sound_eval/`
+
+The `soundEval` utility is capable of providing the results of different classes of sound level meters (LEQ = Equivalent Continuous Sound Level), such as:
+
+     - LAEQ,F = Equiv. contin. sound level with fast time weighting and A frequency weighting
+                (time weighting = fast 125ms, A-weighting frequency weighting, results in dB(A))
+     - LAEQ,S = Equiv. contin. sound level with slow time weighting and A frequency weighting
+                (time weighting = slow 1000ms, A-weighting frequency weighting, results in dB(A))
+     - LAEQ,I = Equiv. contin. sound level with impulse time weighting and A frequency weighting
+                (time weighting = impulse 35ms, A-weighting frequency weighting, results in dB(A))
+     - LEQ,F  = Equiv. contin. sound level with fast time weighting and without frequency weighting (also called Z frequency weighting)
+                (time weighting = fast 125ms, no frequency weighting, results in dB)
+     - LEQ,S  = Equiv. contin. sound level with slow time weighting and without frequency weighting (also called Z frequency weighting)
+                (time weighting = slow 1000ms, no frequency weighting, results in dB)
+     - LEQ,I  = Equiv. contin. sound level with impulse time weighting and without frequency weighting (also called Z frequency weighting)
+                (time weighting = impulse 35ms, no frequency weighting, results in dB)
+     - LCEQ,F = Equiv. contin. sound level with fast time weighting and C frequency weighting
+                (time weighting = fast 125ms, C-weighting frequency weighting, results in dB(C))
+     - LCEQ,S = Equiv. contin. sound level with slow time weighting and C frequency weighting
+                (time weighting = slow 1000ms, C-weighting frequency weighting, results in dB(C))
+     - LCEQ,I = Equiv. contin. sound level with impulse time weighting and C frequency weighting
+                (time weighting = impulse 35ms, C-weighting frequency weighting, results in dB(C))
+
+The `soundEval` utility essentially performs 2 types of analysis:
+
+1- **Period evaluation**: continuous evaluation of short time periods (125ms if time weight = fast, 1000ms if time weight = slow, 35ms if time weight = impulse). This type of evaluation is commonly used to build applications as classifier of specific events/sounds. E.g. if our purpose is to detect fast impulse sounds as gun shots or explosions, we may use an LAEQ,I type period evaluation, and when the sound level is above a certain threshold, it's possible to trigger immediate actions right after the detection.
+
+2- **Interval evaluation**: continuous evaluation of prolonged time intervals, specified by the user. This type of evaluation is suited for applications where the period of time in analysis is bigger than the time constants fast, slow or impulse. An example of application is where we analyze an interval of 8 working hours with a LAEQ,F type sound meter, and if the equivalent continuous sound level is bigger than the threshold specified by the legislation regarding the maximum sound level in a working environment (usually 85dB(A)), we know that it's time to consider the use of personal sound protective equipment.
+The interval evaluation result represents the Root Mean Square value of the acustic pressure for that interval, and is not the sum of the results of the single period evaluations which the interval is composed of. 
+
+Explaining all the different classes of sound level meters is out of the scope of this documentation, but following are some general rules, with hope that it will be helpful to the user for the right choice:
+- FAST TIME WEIGHT is usually used to replicate the natural response of human ear (125ms)
+- SLOW TIME WEIGHT is good at "ignoring" short, fast sounds like car doors slamming or balloons popping. his makes slow weighting a good choice for environmental noise studies, especially for studies that span many hours or even days.
+- IMPULSE TIME WEIGHT is usually used in situations where there are sharp impulsive noises to be measured, such as fireworks or gun shots.
+- A-WEIGHTING FREQ WEIGHT: the data are frequency weighted according to the A-WEIGHTING function, which main purpose is to replicate the human ear response at different frequency bandwidths.
+- Z-WEIGHTING FREQ WEIGHT: no frequency adjustments are made in base to the frequency bandwidths.
+- C-WEIGHTING FREQ WEIGHT: flat response with the extreme high (near 20kHz) and low (near 0 Hz) frequencies attenuated.
+
+|File|R/W|Value|Description|
+|----|:---:|:-:|-----------|
+|enabled|R/W|0|Utility enabled, audio card controlled by soundEval utility|
+|enabled|R/W|1|Utility disabled, audio card available|
+|leq_period|R|*val* *ts*|*val* is the result of the period evaluation, in millidecibels according to the set time (fast, slow or impulse) and frequency weighting (dB, dB(A) or dB(C)). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val* has value -1 and *ts* has value 0.|
+|leq_interval|R|*val* *ts*|*val* is the result of the interval evaluation, in millidecibels according to the set time (fast, slow or impulse) and frequency weighting (dB, dB(A) or dB(C)). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val* has value -1 and *ts* has value 0.|
+|weight_time|R/W|F|FAST time weighting selected|
+|weight_time|R/W|S|SLOW time weighting selected|
+|weight_time|R/W|I|IMPULSE time weighting selected|
+|weight_freq|R/W|A|A-weight frequency weighting selected|
+|weight_freq|R/W|Z|Z-weight frequency weighting selected|
+|weight_freq|R/W|C|C-weight frequency weighting selected|
+|interval_sec|R/W|*val*|*val* is the custom interval of evaluation in seconds. If set to 0, the interval evaluation is not running and the leq_interval file with interval evaluation result is not updated|
 
 ### <a name="sec-elem"></a>Secure Element - `/sys/class/exosensepi/sec_elem/`
 

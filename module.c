@@ -20,6 +20,13 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/time.h>
+
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h>
+#include <linux/fs.h>
+#include <linux/seq_file.h>
+#include <linux/slab.h>
+
 #include "sensirion/sht4x/sht4x.h"
 #include "sensirion/sgp40/sgp40.h"
 #include "sensirion/sgp40_voc_index/sensirion_voc_algorithm.h"
@@ -50,10 +57,110 @@
 #define DEBOUNCE_DEFAULT_TIME_USEC 50000ul
 #define DEBOUNCE_STATE_NOT_DEFINED -1
 
+#define PROCFS_MAX_SIZE 1024
+
+enum snd_time_weighting_mode {
+	FAST_WEIGHTING, SLOW_WEIGHTING, IMPULSE_WEIGHTING
+};
+const char fast_weight_string[] = "f";
+const char slow_weight_string[] = "s";
+const char impulse_weight_string[] = "i";
+
+enum snd_frequency_weighting_mode {
+	A_WEIGHTING, Z_WEIGHTING, C_WEIGHTING
+};
+const char a_weight_string[] = "a";
+const char z_weight_string[] = "z";
+const char c_weight_string[] = "c";
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("1.2");
+MODULE_VERSION("1.3");
+
+char procfs_buffer[PROCFS_MAX_SIZE];
+unsigned long procfs_buffer_size = 0;
+struct proc_dir_entry *entry;
+struct proc_dir_entry *parent;
+
+const char procfs_folder_name[] = "exosensepi";
+const char procfs_setting_file_name[] = "sound_eval_settings";
+const char default_settings[][PROCFS_MAX_SIZE] = {
+		{
+			"version=1.0.0\n"
+			"device=exosensepi-mic\n"
+			"time="
+		},
+		{
+			"\n"
+			"frequency="
+		},
+		{
+			"\n"
+			"interval="
+		},
+		{
+			"\n"
+			"period-result=/sys/class/exosensepi/sound_eval/leq_period\n"
+			"interval-result=/sys/class/exosensepi/sound_eval/leq_interval\n"
+			"continuous=1\n"
+			"interval-only=0\n"
+			"quiet=1\n"
+			"disable="
+		},
+		{
+			"\n"
+			"setting-check-sec=5\n"
+		}
+};
+
+static ssize_t procfile_read(struct file *file, char __user *buffer, size_t count, loff_t *offset)
+{
+    if (*offset > 0 || count < PROCFS_MAX_SIZE) /* we have finished to read, return 0 */
+        return 0;
+
+    if(copy_to_user(buffer, procfs_buffer, procfs_buffer_size))
+        return -EFAULT;
+
+    *offset = procfs_buffer_size;
+    return procfs_buffer_size;
+}
+
+static ssize_t procfile_write(struct file* file,const char __user *buffer,size_t count,loff_t *f_pos){
+    int tlen;
+    char *tmp = kzalloc((count+1),GFP_KERNEL);
+    if(!tmp)return -ENOMEM;
+    if(copy_from_user(tmp,buffer,count)){
+        kfree(tmp);
+        return EFAULT;
+    }
+
+    tlen = PROCFS_MAX_SIZE;
+    if (count < PROCFS_MAX_SIZE)
+        tlen = count;
+    memcpy(&procfs_buffer,tmp,tlen);
+    procfs_buffer_size = tlen;
+    kfree(tmp);
+    return tlen;
+}
+
+static int procfile_show(struct seq_file *m,void *v){
+    static char *str = NULL;
+    seq_printf(m,"%s\n",str);
+    return 0;
+}
+
+static int procfile_open(struct inode *inode,struct file *file){
+    return single_open(file,procfile_show,NULL);
+}
+
+static struct proc_ops proc_fops = {
+    .proc_lseek = seq_lseek,
+    .proc_open = procfile_open,
+    .proc_read = procfile_read,
+    .proc_release = single_release,
+    .proc_write = procfile_write,
+};
 
 static int temp_calib_m = -1000;
 module_param(temp_calib_m, int, S_IRUGO);
@@ -110,6 +217,21 @@ struct WiegandBean {
 	int bitCount;
 	int noise;
 	struct timespec64 lastBitTs;
+};
+
+struct soundEvalResult {
+	long l_EQ;
+	unsigned long long time_epoch_millisec;
+};
+
+struct SoundEvalBean {
+	unsigned int setting_time_weight;
+	unsigned int setting_freq_weight;
+	unsigned long setting_interval;
+	unsigned int setting_enable_utility;
+
+	struct soundEvalResult period_res;
+	struct soundEvalResult interval_res;
 };
 
 static struct class *pDeviceClass;
@@ -173,6 +295,42 @@ static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
 
 static ssize_t opt3001_show(struct device* dev, struct device_attribute* attr,
 		char *buf);
+
+static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalTimeWeight_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalFreqWeight_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalIntervalSec_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalEnableUtility_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
@@ -261,6 +419,19 @@ static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 	70, 70, 69, 69, 68, 68, 67, 67, 66, 66, 65, 65, 65, 64, 64, 63, 63, 62, 62,
 	61, 61, 60, 60, 59, 59, 59, 58, 58, 57, 57, 56, 56, 56, 55, 55, 54, 54, 54,
 	53, 53 };
+
+static struct SoundEvalBean soundEval = {
+	.setting_time_weight = 0,
+	.setting_freq_weight = 0,
+	.setting_interval = 0,
+	.setting_enable_utility = 0,
+
+	.period_res.l_EQ = -1.0,
+	.period_res.time_epoch_millisec = 0,
+
+	.interval_res.l_EQ = -1.0,
+	.interval_res.time_epoch_millisec = 0,
+};
 
 static struct WiegandBean w1 = {
 	.d0 = {
@@ -697,6 +868,76 @@ static struct DeviceAttrBean devAttrBeansAtecc[] = {
 	{ }
 };
 
+static struct DeviceAttrBean devAttrBeansSound[] = {
+	{
+		.devAttr = {
+			.attr = {
+				.name = "leq_period",
+				.mode = 0640,
+			},
+			.show = devAttrSndEvalPeriodLEQ_show,
+			.store = devAttrSndEvalPeriodLEQ_store,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "leq_interval",
+				.mode = 0640,
+			},
+			.show = devAttrSndEvalIntervalLEQ_show,
+			.store = devAttrSndEvalIntervalLEQ_store,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "weight_time",
+				.mode = 0660,
+			},
+			.show = devAttrSndEvalTimeWeight_show,
+			.store = devAttrSndEvalTimeWeight_store,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "weight_freq",
+				.mode = 0660,
+			},
+			.show = devAttrSndEvalFreqWeight_show,
+			.store = devAttrSndEvalFreqWeight_store,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "interval_sec",
+				.mode = 0660,
+			},
+			.show = devAttrSndEvalIntervalSec_show,
+			.store = devAttrSndEvalIntervalSec_store,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "enabled",
+				.mode = 0660,
+			},
+			.show = devAttrSndEvalEnableUtility_show,
+			.store = devAttrSndEvalEnableUtility_store,
+		},
+	},
+
+	{ }
+};
+
 static struct DeviceAttrBean devAttrBeansWiegand[] = {
 	{
 		.devAttr = {
@@ -834,8 +1075,25 @@ static struct DeviceBean devices[] = {
 		.devAttrBeans = devAttrBeansAtecc,
 	},
 
+	{
+		.name = "sound_eval",
+		.devAttrBeans = devAttrBeansSound,
+	},
+
 	{ }
 };
+
+void write_settings_to_proc_buffer(void){
+	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
+	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s", default_settings[0], soundEval.setting_time_weight,
+				default_settings[1], soundEval.setting_freq_weight,
+				default_settings[2], soundEval.setting_interval,
+				default_settings[3], !soundEval.setting_enable_utility,
+				default_settings[4]);
+	memcpy(&procfs_buffer, tmp, strlen(tmp));
+	procfs_buffer_size = strlen(tmp);
+	kfree(tmp);
+}
 
 static char toUpper(char c) {
 	if (c >= 97 && c <= 122) {
@@ -1477,6 +1735,165 @@ static ssize_t opt3001_show(struct device* dev,
 	return sprintf(buf, "%d\n", res);
 }
 
+static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "%ld %llu\n", soundEval.period_res.l_EQ, soundEval.period_res.time_epoch_millisec);
+}
+
+static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	sscanf(buf, "%ld %llu", &soundEval.period_res.l_EQ, &soundEval.period_res.time_epoch_millisec);
+	return count;
+}
+
+static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "%ld %llu\n", soundEval.interval_res.l_EQ, soundEval.interval_res.time_epoch_millisec);
+}
+
+static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	sscanf(buf, "%ld %llu", &soundEval.interval_res.l_EQ, &soundEval.interval_res.time_epoch_millisec);
+	return count;
+}
+
+static ssize_t devAttrSndEvalTimeWeight_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+
+	const char *val;
+
+	switch (soundEval.setting_time_weight)
+	        {
+	        case FAST_WEIGHTING:
+	        	val = fast_weight_string;
+				break;
+	        case SLOW_WEIGHTING:
+	        	val = slow_weight_string;
+				break;
+	        case IMPULSE_WEIGHTING:
+	        	val = impulse_weight_string;
+	        	break;
+	        default:
+	        	soundEval.setting_time_weight = FAST_WEIGHTING;
+	        	val = fast_weight_string;
+	            break;
+	        }
+
+	return sprintf(buf, "%s\n", val);
+}
+
+static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	char buffer_string[256];
+	sscanf(buf, "%s", buffer_string);
+
+	unsigned int ret = soundEval.setting_time_weight;
+	if (strcmp(buffer_string, fast_weight_string) == 0) {
+		ret = FAST_WEIGHTING;
+	} else if (strcmp(buffer_string, slow_weight_string) == 0) {
+		ret = SLOW_WEIGHTING;
+	} else if (strcmp(buffer_string, impulse_weight_string) == 0) {
+		ret = IMPULSE_WEIGHTING;
+	}
+
+	if (ret != soundEval.setting_time_weight) {
+		soundEval.setting_time_weight = ret;
+		write_settings_to_proc_buffer();
+	}
+
+	return count;
+}
+
+static ssize_t devAttrSndEvalFreqWeight_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	const char *val;
+
+	switch (soundEval.setting_freq_weight)
+	        {
+	        case A_WEIGHTING:
+	        	val = a_weight_string;
+				break;
+	        case Z_WEIGHTING:
+	        	val = z_weight_string;
+				break;
+	        case C_WEIGHTING:
+	        	val = c_weight_string;
+	        	break;
+	        default:
+	        	soundEval.setting_freq_weight = A_WEIGHTING;
+	        	val = a_weight_string;
+	            break;
+	        }
+
+	return sprintf(buf, "%s\n", val);
+}
+
+static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	char buffer_string[256];
+	sscanf(buf, "%s", buffer_string);
+
+	unsigned int ret = soundEval.setting_freq_weight;
+	if (strcmp(buffer_string, a_weight_string) == 0) {
+		ret = A_WEIGHTING;
+	} else if (strcmp(buffer_string, z_weight_string) == 0) {
+		ret = Z_WEIGHTING;
+	} else if (strcmp(buffer_string, c_weight_string) == 0) {
+		ret = C_WEIGHTING;
+	}
+
+	if (ret != soundEval.setting_freq_weight) {
+		soundEval.setting_freq_weight = ret;
+		write_settings_to_proc_buffer();
+	}
+
+	return count;
+}
+
+static ssize_t devAttrSndEvalIntervalSec_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "%lu\n", soundEval.setting_interval);
+}
+
+static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	int ret;
+	long val;
+
+	ret = kstrtol(buf, 10, &val);
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (val != soundEval.setting_interval){
+		soundEval.setting_interval = val;
+		write_settings_to_proc_buffer();
+	}
+
+	return count;
+}
+
+static ssize_t devAttrSndEvalEnableUtility_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	return sprintf(buf, "%d\n", soundEval.setting_enable_utility);
+}
+
+static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	int ret;
+	unsigned int val;
+
+	ret = kstrtouint(buf, 10, &val);
+	if (ret < 0) {
+		return ret;
+	}
+	if (val >= 0 && val < 2) {
+		soundEval.setting_enable_utility = val;
+		write_settings_to_proc_buffer();
+	}
+	return count;
+}
+
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
 	return sprintf(buf, w1.enabled ? "1\n" : "0\n");
@@ -1964,6 +2381,9 @@ static void cleanup(void) {
 	}
 
 	wiegandDisable(&w1);
+
+	remove_proc_entry(procfs_setting_file_name, parent);
+	remove_proc_entry(procfs_folder_name, NULL);
 }
 
 static int __init exosensepi_init(void) {
@@ -1971,6 +2391,14 @@ static int __init exosensepi_init(void) {
 	int di, ai;
 
 	printk(KERN_INFO "exosensepi: - | init\n");
+
+	parent = proc_mkdir(procfs_folder_name, NULL);
+	entry = proc_create(procfs_setting_file_name, 0444, parent, &proc_fops);
+	if (!entry) {
+		return -1;
+	}
+
+	write_settings_to_proc_buffer();
 
 	i2c_add_driver(&exosensepi_i2c_driver);
 	mutex_init(&exosensepi_i2c_mutex);
