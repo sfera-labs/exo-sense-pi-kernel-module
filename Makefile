@@ -7,6 +7,7 @@ exosensepi-objs += sensirion/sht4x/sht_git_version.o
 exosensepi-objs += sensirion/sgp40/sgp40.o
 exosensepi-objs += sensirion/sgp40/sgp_git_version.o
 exosensepi-objs += sensirion/sgp40_voc_index/sensirion_voc_algorithm.o
+exosensepi-objs += atecc/atecc.o
 
 ccflags-y := -std=gnu99 -Wno-declaration-after-statement
 
