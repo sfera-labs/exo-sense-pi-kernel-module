@@ -59,6 +59,8 @@
 
 #define PROCFS_MAX_SIZE 1024
 
+#define SND_EVAL_MAX_BANDS 36
+
 enum snd_time_weighting_mode {
 	FAST_WEIGHTING, SLOW_WEIGHTING, IMPULSE_WEIGHTING
 };
@@ -72,6 +74,12 @@ enum snd_frequency_weighting_mode {
 const char a_weight_string[] = "a";
 const char z_weight_string[] = "z";
 const char c_weight_string[] = "c";
+
+enum snd_frequency_bands_type {
+	ONE_THIRD_OCTAVE, ONE_OCTAVE
+};
+const char one_octave_freq_band_string[] = "1";
+const char one_third_octave_freq_band_string[] = "3";
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
@@ -87,7 +95,7 @@ const char procfs_folder_name[] = "exosensepi";
 const char procfs_setting_file_name[] = "sound_eval_settings";
 const char default_settings[][PROCFS_MAX_SIZE] = {
 		{
-			"version=1.0.0\n"
+			"version=1.1.0\n"
 			"device=exosensepi-mic\n"
 			"time="
 		},
@@ -101,8 +109,13 @@ const char default_settings[][PROCFS_MAX_SIZE] = {
 		},
 		{
 			"\n"
+			"freq-bands="
+		},
+		{
+			"\n"
 			"period-result=/sys/class/exosensepi/sound_eval/leq_period\n"
 			"interval-result=/sys/class/exosensepi/sound_eval/leq_interval\n"
+			"period-bands-result=/sys/class/exosensepi/sound_eval/leq_period_bands\n"
 			"continuous=1\n"
 			"interval-only=0\n"
 			"quiet=1\n"
@@ -224,6 +237,11 @@ struct soundEvalResult {
 	unsigned long long time_epoch_millisec;
 };
 
+struct soundEvalBandsResult {
+	long l_EQ[SND_EVAL_MAX_BANDS];
+	unsigned long long time_epoch_millisec;
+};
+
 struct SoundEvalBean {
 	unsigned int setting_time_weight;
 	unsigned int setting_freq_weight;
@@ -232,6 +250,9 @@ struct SoundEvalBean {
 
 	struct soundEvalResult period_res;
 	struct soundEvalResult interval_res;
+
+	unsigned int setting_freq_bands_type;
+	struct soundEvalBandsResult period_bands_res;
 };
 
 static struct class *pDeviceClass;
@@ -330,6 +351,18 @@ static ssize_t devAttrSndEvalEnableUtility_show(struct device* dev, struct devic
 		char *buf);
 
 static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalFreqBandsType_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
@@ -431,6 +464,13 @@ static struct SoundEvalBean soundEval = {
 
 	.interval_res.l_EQ = -1.0,
 	.interval_res.time_epoch_millisec = 0,
+
+	.setting_freq_bands_type = ONE_THIRD_OCTAVE,
+	.period_bands_res.time_epoch_millisec = 0,
+	.period_bands_res.l_EQ = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0},
 };
 
 static struct WiegandBean w1 = {
@@ -894,6 +934,17 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
+				.name = "leq_period_bands",
+				.mode = 0640,
+			},
+			.show = devAttrSndEvalPeriodBandsLEQ_show,
+			.store = devAttrSndEvalPeriodBandsLEQ_store,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
 				.name = "weight_time",
 				.mode = 0660,
 			},
@@ -910,6 +961,18 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 			},
 			.show = devAttrSndEvalFreqWeight_show,
 			.store = devAttrSndEvalFreqWeight_store,
+		},
+	},
+
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "weight_freq_bands",
+				.mode = 0660,
+			},
+			.show = devAttrSndEvalFreqBandsType_show,
+			.store = devAttrSndEvalFreqBandsType_store,
 		},
 	},
 
@@ -1085,11 +1148,13 @@ static struct DeviceBean devices[] = {
 
 void write_settings_to_proc_buffer(void){
 	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
-	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s", default_settings[0], soundEval.setting_time_weight,
+	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s%d%s",
+				default_settings[0], soundEval.setting_time_weight,
 				default_settings[1], soundEval.setting_freq_weight,
 				default_settings[2], soundEval.setting_interval,
-				default_settings[3], !soundEval.setting_enable_utility,
-				default_settings[4]);
+				default_settings[3], soundEval.setting_freq_bands_type,
+				default_settings[4], !soundEval.setting_enable_utility,
+				default_settings[5]);
 	memcpy(&procfs_buffer, tmp, strlen(tmp));
 	procfs_buffer_size = strlen(tmp);
 	kfree(tmp);
@@ -1891,6 +1956,129 @@ static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 		soundEval.setting_enable_utility = val;
 		write_settings_to_proc_buffer();
 	}
+	return count;
+}
+
+static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	char res[256];
+
+	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE){
+		sprintf(res, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					 "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					 "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					 "%ld %ld %ld %ld %ld %ld",
+					 soundEval.period_bands_res.l_EQ[0], soundEval.period_bands_res.l_EQ[1],
+					 soundEval.period_bands_res.l_EQ[2], soundEval.period_bands_res.l_EQ[3],
+					 soundEval.period_bands_res.l_EQ[4], soundEval.period_bands_res.l_EQ[5],
+					 soundEval.period_bands_res.l_EQ[6], soundEval.period_bands_res.l_EQ[7],
+					 soundEval.period_bands_res.l_EQ[8], soundEval.period_bands_res.l_EQ[9],
+					 soundEval.period_bands_res.l_EQ[10], soundEval.period_bands_res.l_EQ[11],
+					 soundEval.period_bands_res.l_EQ[12], soundEval.period_bands_res.l_EQ[13],
+					 soundEval.period_bands_res.l_EQ[14], soundEval.period_bands_res.l_EQ[15],
+					 soundEval.period_bands_res.l_EQ[16], soundEval.period_bands_res.l_EQ[17],
+					 soundEval.period_bands_res.l_EQ[18], soundEval.period_bands_res.l_EQ[19],
+					 soundEval.period_bands_res.l_EQ[20], soundEval.period_bands_res.l_EQ[21],
+					 soundEval.period_bands_res.l_EQ[22], soundEval.period_bands_res.l_EQ[23],
+					 soundEval.period_bands_res.l_EQ[24], soundEval.period_bands_res.l_EQ[25],
+					 soundEval.period_bands_res.l_EQ[26], soundEval.period_bands_res.l_EQ[27],
+					 soundEval.period_bands_res.l_EQ[28], soundEval.period_bands_res.l_EQ[29],
+					 soundEval.period_bands_res.l_EQ[30], soundEval.period_bands_res.l_EQ[31],
+					 soundEval.period_bands_res.l_EQ[32], soundEval.period_bands_res.l_EQ[33],
+					 soundEval.period_bands_res.l_EQ[34], soundEval.period_bands_res.l_EQ[35]);
+	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE){
+		sprintf(res, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					 "%ld %ld",
+					 soundEval.period_bands_res.l_EQ[0], soundEval.period_bands_res.l_EQ[1],
+					 soundEval.period_bands_res.l_EQ[2], soundEval.period_bands_res.l_EQ[3],
+					 soundEval.period_bands_res.l_EQ[4], soundEval.period_bands_res.l_EQ[5],
+					 soundEval.period_bands_res.l_EQ[6], soundEval.period_bands_res.l_EQ[7],
+					 soundEval.period_bands_res.l_EQ[8], soundEval.period_bands_res.l_EQ[9],
+					 soundEval.period_bands_res.l_EQ[10], soundEval.period_bands_res.l_EQ[11]);
+	}
+	printk("damn %llu\n", soundEval.period_bands_res.time_epoch_millisec)
+	return sprintf(buf, "%s %llu\n", res, soundEval.period_bands_res.time_epoch_millisec);
+
+}
+
+static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE){
+		sscanf(buf, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld %ld %ld %ld %ld %llu",
+					&soundEval.period_bands_res.l_EQ[0], &soundEval.period_bands_res.l_EQ[1],
+					&soundEval.period_bands_res.l_EQ[2], &soundEval.period_bands_res.l_EQ[3],
+					&soundEval.period_bands_res.l_EQ[4], &soundEval.period_bands_res.l_EQ[5],
+					&soundEval.period_bands_res.l_EQ[6], &soundEval.period_bands_res.l_EQ[7],
+					&soundEval.period_bands_res.l_EQ[8], &soundEval.period_bands_res.l_EQ[9],
+					&soundEval.period_bands_res.l_EQ[10], &soundEval.period_bands_res.l_EQ[11],
+					&soundEval.period_bands_res.l_EQ[12], &soundEval.period_bands_res.l_EQ[13],
+					&soundEval.period_bands_res.l_EQ[14], &soundEval.period_bands_res.l_EQ[15],
+					&soundEval.period_bands_res.l_EQ[16], &soundEval.period_bands_res.l_EQ[17],
+					&soundEval.period_bands_res.l_EQ[18], &soundEval.period_bands_res.l_EQ[19],
+					&soundEval.period_bands_res.l_EQ[20], &soundEval.period_bands_res.l_EQ[21],
+					&soundEval.period_bands_res.l_EQ[22], &soundEval.period_bands_res.l_EQ[23],
+					&soundEval.period_bands_res.l_EQ[24], &soundEval.period_bands_res.l_EQ[25],
+					&soundEval.period_bands_res.l_EQ[26], &soundEval.period_bands_res.l_EQ[27],
+					&soundEval.period_bands_res.l_EQ[28], &soundEval.period_bands_res.l_EQ[29],
+					&soundEval.period_bands_res.l_EQ[30], &soundEval.period_bands_res.l_EQ[31],
+					&soundEval.period_bands_res.l_EQ[32], &soundEval.period_bands_res.l_EQ[33],
+					&soundEval.period_bands_res.l_EQ[34], &soundEval.period_bands_res.l_EQ[35],
+					&soundEval.period_bands_res.time_epoch_millisec);
+	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE){
+		sscanf(buf, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld %llu",
+					&soundEval.period_bands_res.l_EQ[0], &soundEval.period_bands_res.l_EQ[1],
+					&soundEval.period_bands_res.l_EQ[2], &soundEval.period_bands_res.l_EQ[3],
+					&soundEval.period_bands_res.l_EQ[4], &soundEval.period_bands_res.l_EQ[5],
+					&soundEval.period_bands_res.l_EQ[6], &soundEval.period_bands_res.l_EQ[7],
+					&soundEval.period_bands_res.l_EQ[8], &soundEval.period_bands_res.l_EQ[9],
+					&soundEval.period_bands_res.l_EQ[10], &soundEval.period_bands_res.l_EQ[11],
+					&soundEval.period_bands_res.time_epoch_millisec);
+	}
+	return count;
+}
+
+static ssize_t devAttrSndEvalFreqBandsType_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	const char *val;
+
+	switch (soundEval.setting_freq_bands_type)
+	        {
+	        case ONE_THIRD_OCTAVE:
+	        	val = one_third_octave_freq_band_string;
+				break;
+	        case ONE_OCTAVE:
+	        	val = one_octave_freq_band_string;
+				break;
+	        default:
+	        	soundEval.setting_freq_bands_type = ONE_THIRD_OCTAVE;
+	        	val = one_third_octave_freq_band_string;
+	            break;
+	        }
+
+	return sprintf(buf, "%s\n", val);
+}
+
+static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	char buffer_string[256];
+	sscanf(buf, "%s", buffer_string);
+
+	unsigned int ret = soundEval.setting_freq_bands_type;
+	if (strcmp(buffer_string, one_third_octave_freq_band_string) == 0) {
+		ret = ONE_THIRD_OCTAVE;
+	} else if (strcmp(buffer_string, one_octave_freq_band_string) == 0) {
+		ret = ONE_OCTAVE;
+	}
+
+	if (ret != soundEval.setting_freq_bands_type) {
+		soundEval.setting_freq_bands_type = ret;
+		write_settings_to_proc_buffer();
+	}
+
 	return count;
 }
 
