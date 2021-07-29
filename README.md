@@ -374,12 +374,12 @@ Explaining all the different classes of sound level meters is out of the scope o
 |leq_period|R|*val* *ts*|*val* is the result of the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val* has value -1 and *ts* has value 0.|
 |leq_interval|R|*val* *ts*|*val* is the result of the interval evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val* has value -1 and *ts* has value 0.|
 |leq_period_bands|R|*val_1* *val_2* .. *val_n* *ts*|*val_1* *val_2* .. *val_n* are the equivalent sound levels of each frequency bandwidth detected during the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val_1* *val_2* .. *val_n* have value -1 and *ts* has value 0.|
-|weight_time|R/W|f|FAST time weighting selected|
-|weight_time|R/W|s|SLOW time weighting selected|
-|weight_time|R/W|i|IMPULSE time weighting selected|
-|weight_freq|R/W|a|A-weight frequency weighting selected|
-|weight_freq|R/W|z|Z-weight frequency weighting selected|
-|weight_freq|R/W|c|C-weight frequency weighting selected|
+|weight_time|R/W|F|FAST time weighting selected|
+|weight_time|R/W|S|SLOW time weighting selected|
+|weight_time|R/W|I|IMPULSE time weighting selected|
+|weight_freq|R/W|A|A-weight frequency weighting selected|
+|weight_freq|R/W|Z|Z-weight frequency weighting selected|
+|weight_freq|R/W|C|C-weight frequency weighting selected|
 |weight_freq_bands|R/W|1|1 octave frequency weighting table selected|
 |weight_freq_bands|R/W|3|1/3 octave frequency weighting table selected|
 |interval_sec|R/W|*val*|*val* is the custom interval of evaluation in seconds. If set to 0, the interval evaluation is not running and the leq_interval file with interval evaluation result is not updated|
