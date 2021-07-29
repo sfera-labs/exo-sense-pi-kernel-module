@@ -1859,6 +1859,8 @@ static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 		ret = SLOW_WEIGHTING;
 	} else if (strcmp(buffer_string, impulse_weight_string) == 0) {
 		ret = IMPULSE_WEIGHTING;
+	} else {
+		return -EINVAL;
 	}
 
 	if (ret != soundEval.setting_time_weight) {
@@ -1905,6 +1907,8 @@ static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 		ret = Z_WEIGHTING;
 	} else if (strcmp(buffer_string, c_weight_string) == 0) {
 		ret = C_WEIGHTING;
+	} else {
+		return -EINVAL;
 	}
 
 	if (ret != soundEval.setting_freq_weight) {
@@ -1952,10 +1956,16 @@ static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 	if (ret < 0) {
 		return ret;
 	}
-	if (val >= 0 && val < 2) {
+
+	if (val < 0 || val >= 2) {
+		return -EINVAL;
+	}
+
+	if (val != soundEval.setting_enable_utility){
 		soundEval.setting_enable_utility = val;
 		write_settings_to_proc_buffer();
 	}
+
 	return count;
 }
 
@@ -2072,6 +2082,8 @@ static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
 		ret = ONE_THIRD_OCTAVE;
 	} else if (strcmp(buffer_string, one_octave_freq_band_string) == 0) {
 		ret = ONE_OCTAVE;
+	} else {
+		return -EINVAL;
 	}
 
 	if (ret != soundEval.setting_freq_bands_type) {
