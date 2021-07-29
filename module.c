@@ -2006,7 +2006,6 @@ static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device* dev, struct devi
 					 soundEval.period_bands_res.l_EQ[8], soundEval.period_bands_res.l_EQ[9],
 					 soundEval.period_bands_res.l_EQ[10], soundEval.period_bands_res.l_EQ[11]);
 	}
-	printk("damn %llu\n", soundEval.period_bands_res.time_epoch_millisec)
 	return sprintf(buf, "%s %llu\n", res, soundEval.period_bands_res.time_epoch_millisec);
 
 }
