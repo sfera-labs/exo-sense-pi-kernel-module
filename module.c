@@ -84,7 +84,7 @@ const char one_third_octave_freq_band_char = '3';
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("1.4");
+MODULE_VERSION("2.0");
 
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;
@@ -95,7 +95,7 @@ const char procfs_folder_name[] = "exosensepi";
 const char procfs_setting_file_name[] = "sound_eval_settings";
 const char default_settings[][PROCFS_MAX_SIZE] = {
 		{
-			"version=1.1.0\n"
+			"version=2.0.0\n"
 			"device=exosensepi-mic\n"
 			"time="
 		},
@@ -1802,23 +1802,29 @@ static ssize_t opt3001_show(struct device* dev,
 
 static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%ld %llu\n", soundEval.period_res.l_EQ, soundEval.period_res.time_epoch_millisec);
+	return sprintf(buf, "%llu %ld\n", soundEval.period_res.time_epoch_millisec, soundEval.period_res.l_EQ);
 }
 
 static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	sscanf(buf, "%ld %llu", &soundEval.period_res.l_EQ, &soundEval.period_res.time_epoch_millisec);
+	int res = sscanf(buf, "%llu %ld", &soundEval.period_res.time_epoch_millisec, &soundEval.period_res.l_EQ);
+	if (res != 2) {
+		return -EINVAL;
+	}
 	return count;
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%ld %llu\n", soundEval.interval_res.l_EQ, soundEval.interval_res.time_epoch_millisec);
+	return sprintf(buf, "%llu %ld\n", soundEval.interval_res.time_epoch_millisec, soundEval.interval_res.l_EQ);
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	sscanf(buf, "%ld %llu", &soundEval.interval_res.l_EQ, &soundEval.interval_res.time_epoch_millisec);
+	int res = sscanf(buf, "%llu %ld", &soundEval.interval_res.time_epoch_millisec, &soundEval.interval_res.l_EQ);
+	if (res != 2) {
+		return -EINVAL;
+	}
 	return count;
 }
 
@@ -2002,17 +2008,20 @@ static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device* dev, struct devi
 					 soundEval.period_bands_res.l_EQ[8], soundEval.period_bands_res.l_EQ[9],
 					 soundEval.period_bands_res.l_EQ[10], soundEval.period_bands_res.l_EQ[11]);
 	}
-	return sprintf(buf, "%s %llu\n", res, soundEval.period_bands_res.time_epoch_millisec);
+	return sprintf(buf, "%llu %s\n", soundEval.period_bands_res.time_epoch_millisec, res);
 
 }
 
 static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
+	int res;
 	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE){
-		sscanf(buf, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+		res = sscanf(buf, "%llu "
 					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
 					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					"%ld %ld %ld %ld %ld %ld %llu",
+					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld %ld %ld %ld %ld",
+					&soundEval.period_bands_res.time_epoch_millisec,
 					&soundEval.period_bands_res.l_EQ[0], &soundEval.period_bands_res.l_EQ[1],
 					&soundEval.period_bands_res.l_EQ[2], &soundEval.period_bands_res.l_EQ[3],
 					&soundEval.period_bands_res.l_EQ[4], &soundEval.period_bands_res.l_EQ[5],
@@ -2030,18 +2039,24 @@ static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
 					&soundEval.period_bands_res.l_EQ[28], &soundEval.period_bands_res.l_EQ[29],
 					&soundEval.period_bands_res.l_EQ[30], &soundEval.period_bands_res.l_EQ[31],
 					&soundEval.period_bands_res.l_EQ[32], &soundEval.period_bands_res.l_EQ[33],
-					&soundEval.period_bands_res.l_EQ[34], &soundEval.period_bands_res.l_EQ[35],
-					&soundEval.period_bands_res.time_epoch_millisec);
+					&soundEval.period_bands_res.l_EQ[34], &soundEval.period_bands_res.l_EQ[35]);
+		if (res != 37) {
+			return -EINVAL;
+		}
 	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE){
-		sscanf(buf, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					"%ld %ld %llu",
+		res = sscanf(buf, "%llu "
+					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld",
+					&soundEval.period_bands_res.time_epoch_millisec,
 					&soundEval.period_bands_res.l_EQ[0], &soundEval.period_bands_res.l_EQ[1],
 					&soundEval.period_bands_res.l_EQ[2], &soundEval.period_bands_res.l_EQ[3],
 					&soundEval.period_bands_res.l_EQ[4], &soundEval.period_bands_res.l_EQ[5],
 					&soundEval.period_bands_res.l_EQ[6], &soundEval.period_bands_res.l_EQ[7],
 					&soundEval.period_bands_res.l_EQ[8], &soundEval.period_bands_res.l_EQ[9],
-					&soundEval.period_bands_res.l_EQ[10], &soundEval.period_bands_res.l_EQ[11],
-					&soundEval.period_bands_res.time_epoch_millisec);
+					&soundEval.period_bands_res.l_EQ[10], &soundEval.period_bands_res.l_EQ[11]);
+		if (res != 13) {
+			return -EINVAL;
+		}
 	}
 	return count;
 }

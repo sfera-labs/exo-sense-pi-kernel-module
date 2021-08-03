@@ -303,7 +303,7 @@ The interval evaluation result represents the Root Mean Square value of the acus
 
 If frequency type A-weighting or C-weighting is selected, the sound levels are adjusted according to the values of a specific table with adjustment factors. This table groups the adjustment factors into bandwidths of octaves or fractions of octaves. The `soundEval` utility allows the choice between groups of 1 octave or groups of 1/3 octaves.
 
-1/3 octave weighting table:
+**1/3 octave weighting table:**
 |Frequency [Hz]|A-weighting (dB)|C-weighting (dB)|
 |----|:---:|:-:|
 |6.3|-85.4|-21.3|
@@ -343,7 +343,7 @@ If frequency type A-weighting or C-weighting is selected, the sound levels are a
 |16000|-6.6|-8.5|
 |20000|-9.3|-11.2|
 
-1 octave weighting table:
+**1 octave weighting table:**
 |Frequency [Hz]|A-weighting (dB)|C-weighting (dB)|
 |----|:---:|:-:|
 |8|-77.8|-17.7|
@@ -370,10 +370,10 @@ Explaining all the different classes of sound level meters is out of the scope o
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
 |enabled|R/W|0|Utility disabled, audio card available|
-|enabled|R/W|1|Utility enabled, audio card controlled by soundEval utility|
-|leq_period|R|*val* *ts*|*val* is the result of the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val* has value -1 and *ts* has value 0.|
-|leq_interval|R|*val* *ts*|*val* is the result of the interval evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val* has value -1 and *ts* has value 0.|
-|leq_period_bands|R|*val_1* *val_2* .. *val_n* *ts*|*val_1* *val_2* .. *val_n* are the equivalent sound levels of each frequency bandwidth detected during the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). *ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. If the first evaluation is not yet complete or the utility is not running, *val_1* *val_2* .. *val_n* have value -1 and *ts* has value 0.|
+|enabled|R/W|1|Utility enabled, audio card controlled by `soundEval` utility|
+|leq_period|R|*ts* *val*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val* is the result of the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val* has value -1 and *ts* has value 0.|
+|leq_interval|R|*ts* *val*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val* is the result of the interval evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val* has value -1 and *ts* has value 0.|
+|leq_period_bands|R|*ts* *val_1* *val_2* .. *val_n*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val_1* *val_2* .. *val_n* are the equivalent sound levels of each frequency bandwidth detected during the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val_1* *val_2* .. *val_n* have value -1 and *ts* has value 0.|
 |weight_time|R/W|F|FAST time weighting selected|
 |weight_time|R/W|S|SLOW time weighting selected|
 |weight_time|R/W|I|IMPULSE time weighting selected|
