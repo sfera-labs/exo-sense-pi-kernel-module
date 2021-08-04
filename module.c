@@ -59,24 +59,32 @@
 
 #define PROCFS_MAX_SIZE 1024
 
+#define SND_EVAL_MAX_BANDS 36
+
 enum snd_time_weighting_mode {
 	FAST_WEIGHTING, SLOW_WEIGHTING, IMPULSE_WEIGHTING
 };
-const char fast_weight_string[] = "f";
-const char slow_weight_string[] = "s";
-const char impulse_weight_string[] = "i";
+const char fast_weight_char = 'F';
+const char slow_weight_char = 'S';
+const char impulse_weight_char = 'I';
 
 enum snd_frequency_weighting_mode {
 	A_WEIGHTING, Z_WEIGHTING, C_WEIGHTING
 };
-const char a_weight_string[] = "a";
-const char z_weight_string[] = "z";
-const char c_weight_string[] = "c";
+const char a_weight_char = 'A';
+const char z_weight_char = 'Z';
+const char c_weight_char = 'C';
+
+enum snd_frequency_bands_type {
+	ONE_THIRD_OCTAVE, ONE_OCTAVE
+};
+const char one_octave_freq_band_char = '1';
+const char one_third_octave_freq_band_char = '3';
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("1.3");
+MODULE_VERSION("2.0");
 
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;
@@ -87,7 +95,7 @@ const char procfs_folder_name[] = "exosensepi";
 const char procfs_setting_file_name[] = "sound_eval_settings";
 const char default_settings[][PROCFS_MAX_SIZE] = {
 		{
-			"version=1.0.0\n"
+			"version=2.0.0\n"
 			"device=exosensepi-mic\n"
 			"time="
 		},
@@ -101,8 +109,13 @@ const char default_settings[][PROCFS_MAX_SIZE] = {
 		},
 		{
 			"\n"
+			"freq-bands="
+		},
+		{
+			"\n"
 			"period-result=/sys/class/exosensepi/sound_eval/leq_period\n"
 			"interval-result=/sys/class/exosensepi/sound_eval/leq_interval\n"
+			"period-bands-result=/sys/class/exosensepi/sound_eval/leq_period_bands\n"
 			"continuous=1\n"
 			"interval-only=0\n"
 			"quiet=1\n"
@@ -224,6 +237,11 @@ struct soundEvalResult {
 	unsigned long long time_epoch_millisec;
 };
 
+struct soundEvalBandsResult {
+	long l_EQ[SND_EVAL_MAX_BANDS];
+	unsigned long long time_epoch_millisec;
+};
+
 struct SoundEvalBean {
 	unsigned int setting_time_weight;
 	unsigned int setting_freq_weight;
@@ -232,6 +250,9 @@ struct SoundEvalBean {
 
 	struct soundEvalResult period_res;
 	struct soundEvalResult interval_res;
+
+	unsigned int setting_freq_bands_type;
+	struct soundEvalBandsResult period_bands_res;
 };
 
 static struct class *pDeviceClass;
@@ -330,6 +351,18 @@ static ssize_t devAttrSndEvalEnableUtility_show(struct device* dev, struct devic
 		char *buf);
 
 static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrSndEvalFreqBandsType_show(struct device* dev, struct device_attribute* attr,
+		char *buf);
+
+static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrWiegandEnabled_show(struct device* dev,
@@ -431,6 +464,13 @@ static struct SoundEvalBean soundEval = {
 
 	.interval_res.l_EQ = -1.0,
 	.interval_res.time_epoch_millisec = 0,
+
+	.setting_freq_bands_type = ONE_THIRD_OCTAVE,
+	.period_bands_res.time_epoch_millisec = 0,
+	.period_bands_res.l_EQ = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0},
 };
 
 static struct WiegandBean w1 = {
@@ -894,6 +934,17 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 	{
 		.devAttr = {
 			.attr = {
+				.name = "leq_period_bands",
+				.mode = 0640,
+			},
+			.show = devAttrSndEvalPeriodBandsLEQ_show,
+			.store = devAttrSndEvalPeriodBandsLEQ_store,
+		},
+	},
+
+	{
+		.devAttr = {
+			.attr = {
 				.name = "weight_time",
 				.mode = 0660,
 			},
@@ -910,6 +961,18 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 			},
 			.show = devAttrSndEvalFreqWeight_show,
 			.store = devAttrSndEvalFreqWeight_store,
+		},
+	},
+
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "weight_freq_bands",
+				.mode = 0660,
+			},
+			.show = devAttrSndEvalFreqBandsType_show,
+			.store = devAttrSndEvalFreqBandsType_store,
 		},
 	},
 
@@ -1085,11 +1148,13 @@ static struct DeviceBean devices[] = {
 
 void write_settings_to_proc_buffer(void){
 	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
-	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s", default_settings[0], soundEval.setting_time_weight,
+	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s%d%s",
+				default_settings[0], soundEval.setting_time_weight,
 				default_settings[1], soundEval.setting_freq_weight,
 				default_settings[2], soundEval.setting_interval,
-				default_settings[3], !soundEval.setting_enable_utility,
-				default_settings[4]);
+				default_settings[3], soundEval.setting_freq_bands_type,
+				default_settings[4], !soundEval.setting_enable_utility,
+				default_settings[5]);
 	memcpy(&procfs_buffer, tmp, strlen(tmp));
 	procfs_buffer_size = strlen(tmp);
 	kfree(tmp);
@@ -1737,63 +1802,69 @@ static ssize_t opt3001_show(struct device* dev,
 
 static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%ld %llu\n", soundEval.period_res.l_EQ, soundEval.period_res.time_epoch_millisec);
+	return sprintf(buf, "%llu %ld\n", soundEval.period_res.time_epoch_millisec, soundEval.period_res.l_EQ);
 }
 
 static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	sscanf(buf, "%ld %llu", &soundEval.period_res.l_EQ, &soundEval.period_res.time_epoch_millisec);
+	int res = sscanf(buf, "%llu %ld", &soundEval.period_res.time_epoch_millisec, &soundEval.period_res.l_EQ);
+	if (res != 2) {
+		return -EINVAL;
+	}
 	return count;
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	return sprintf(buf, "%ld %llu\n", soundEval.interval_res.l_EQ, soundEval.interval_res.time_epoch_millisec);
+	return sprintf(buf, "%llu %ld\n", soundEval.interval_res.time_epoch_millisec, soundEval.interval_res.l_EQ);
 }
 
 static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	sscanf(buf, "%ld %llu", &soundEval.interval_res.l_EQ, &soundEval.interval_res.time_epoch_millisec);
+	int res = sscanf(buf, "%llu %ld", &soundEval.interval_res.time_epoch_millisec, &soundEval.interval_res.l_EQ);
+	if (res != 2) {
+		return -EINVAL;
+	}
 	return count;
 }
 
 static ssize_t devAttrSndEvalTimeWeight_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
 
-	const char *val;
+	char val;
 
 	switch (soundEval.setting_time_weight)
 	        {
 	        case FAST_WEIGHTING:
-	        	val = fast_weight_string;
+	        	val = fast_weight_char;
 				break;
 	        case SLOW_WEIGHTING:
-	        	val = slow_weight_string;
+	        	val = slow_weight_char;
 				break;
 	        case IMPULSE_WEIGHTING:
-	        	val = impulse_weight_string;
+	        	val = impulse_weight_char;
 	        	break;
 	        default:
 	        	soundEval.setting_time_weight = FAST_WEIGHTING;
-	        	val = fast_weight_string;
+	        	val = fast_weight_char;
 	            break;
 	        }
 
-	return sprintf(buf, "%s\n", val);
+	return sprintf(buf, "%c\n", val);
 }
 
 static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	char buffer_string[256];
-	sscanf(buf, "%s", buffer_string);
 
 	unsigned int ret = soundEval.setting_time_weight;
-	if (strcmp(buffer_string, fast_weight_string) == 0) {
+	if (toUpper(buf[0]) == fast_weight_char){
 		ret = FAST_WEIGHTING;
-	} else if (strcmp(buffer_string, slow_weight_string) == 0) {
+	} else if (toUpper(buf[0]) == slow_weight_char){
 		ret = SLOW_WEIGHTING;
-	} else if (strcmp(buffer_string, impulse_weight_string) == 0) {
+	} else if (toUpper(buf[0]) == impulse_weight_char) {
 		ret = IMPULSE_WEIGHTING;
+	} else {
+		return -EINVAL;
 	}
 
 	if (ret != soundEval.setting_time_weight) {
@@ -1806,40 +1877,40 @@ static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 
 static ssize_t devAttrSndEvalFreqWeight_show(struct device* dev, struct device_attribute* attr,
 		char *buf){
-	const char *val;
+	char val;
 
 	switch (soundEval.setting_freq_weight)
 	        {
 	        case A_WEIGHTING:
-	        	val = a_weight_string;
+	        	val = a_weight_char;
 				break;
 	        case Z_WEIGHTING:
-	        	val = z_weight_string;
+	        	val = z_weight_char;
 				break;
 	        case C_WEIGHTING:
-	        	val = c_weight_string;
+	        	val = c_weight_char;
 	        	break;
 	        default:
 	        	soundEval.setting_freq_weight = A_WEIGHTING;
-	        	val = a_weight_string;
+	        	val = a_weight_char;
 	            break;
 	        }
 
-	return sprintf(buf, "%s\n", val);
+	return sprintf(buf, "%c\n", val);
 }
 
 static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count){
-	char buffer_string[256];
-	sscanf(buf, "%s", buffer_string);
 
 	unsigned int ret = soundEval.setting_freq_weight;
-	if (strcmp(buffer_string, a_weight_string) == 0) {
+	if (toUpper(buf[0]) == a_weight_char) {
 		ret = A_WEIGHTING;
-	} else if (strcmp(buffer_string, z_weight_string) == 0) {
+	} else if (toUpper(buf[0]) == z_weight_char) {
 		ret = Z_WEIGHTING;
-	} else if (strcmp(buffer_string, c_weight_string) == 0) {
+	} else if (toUpper(buf[0]) == c_weight_char) {
 		ret = C_WEIGHTING;
+	} else {
+		return -EINVAL;
 	}
 
 	if (ret != soundEval.setting_freq_weight) {
@@ -1887,10 +1958,147 @@ static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 	if (ret < 0) {
 		return ret;
 	}
-	if (val >= 0 && val < 2) {
+
+	if (val < 0 || val >= 2) {
+		return -EINVAL;
+	}
+
+	if (val != soundEval.setting_enable_utility){
 		soundEval.setting_enable_utility = val;
 		write_settings_to_proc_buffer();
 	}
+
+	return count;
+}
+
+static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	char res[256];
+
+	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE){
+		sprintf(res, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					 "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					 "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					 "%ld %ld %ld %ld %ld %ld",
+					 soundEval.period_bands_res.l_EQ[0], soundEval.period_bands_res.l_EQ[1],
+					 soundEval.period_bands_res.l_EQ[2], soundEval.period_bands_res.l_EQ[3],
+					 soundEval.period_bands_res.l_EQ[4], soundEval.period_bands_res.l_EQ[5],
+					 soundEval.period_bands_res.l_EQ[6], soundEval.period_bands_res.l_EQ[7],
+					 soundEval.period_bands_res.l_EQ[8], soundEval.period_bands_res.l_EQ[9],
+					 soundEval.period_bands_res.l_EQ[10], soundEval.period_bands_res.l_EQ[11],
+					 soundEval.period_bands_res.l_EQ[12], soundEval.period_bands_res.l_EQ[13],
+					 soundEval.period_bands_res.l_EQ[14], soundEval.period_bands_res.l_EQ[15],
+					 soundEval.period_bands_res.l_EQ[16], soundEval.period_bands_res.l_EQ[17],
+					 soundEval.period_bands_res.l_EQ[18], soundEval.period_bands_res.l_EQ[19],
+					 soundEval.period_bands_res.l_EQ[20], soundEval.period_bands_res.l_EQ[21],
+					 soundEval.period_bands_res.l_EQ[22], soundEval.period_bands_res.l_EQ[23],
+					 soundEval.period_bands_res.l_EQ[24], soundEval.period_bands_res.l_EQ[25],
+					 soundEval.period_bands_res.l_EQ[26], soundEval.period_bands_res.l_EQ[27],
+					 soundEval.period_bands_res.l_EQ[28], soundEval.period_bands_res.l_EQ[29],
+					 soundEval.period_bands_res.l_EQ[30], soundEval.period_bands_res.l_EQ[31],
+					 soundEval.period_bands_res.l_EQ[32], soundEval.period_bands_res.l_EQ[33],
+					 soundEval.period_bands_res.l_EQ[34], soundEval.period_bands_res.l_EQ[35]);
+	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE){
+		sprintf(res, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					 "%ld %ld",
+					 soundEval.period_bands_res.l_EQ[0], soundEval.period_bands_res.l_EQ[1],
+					 soundEval.period_bands_res.l_EQ[2], soundEval.period_bands_res.l_EQ[3],
+					 soundEval.period_bands_res.l_EQ[4], soundEval.period_bands_res.l_EQ[5],
+					 soundEval.period_bands_res.l_EQ[6], soundEval.period_bands_res.l_EQ[7],
+					 soundEval.period_bands_res.l_EQ[8], soundEval.period_bands_res.l_EQ[9],
+					 soundEval.period_bands_res.l_EQ[10], soundEval.period_bands_res.l_EQ[11]);
+	}
+	return sprintf(buf, "%llu %s\n", soundEval.period_bands_res.time_epoch_millisec, res);
+
+}
+
+static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	int res;
+	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE){
+		res = sscanf(buf, "%llu "
+					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld %ld %ld %ld %ld",
+					&soundEval.period_bands_res.time_epoch_millisec,
+					&soundEval.period_bands_res.l_EQ[0], &soundEval.period_bands_res.l_EQ[1],
+					&soundEval.period_bands_res.l_EQ[2], &soundEval.period_bands_res.l_EQ[3],
+					&soundEval.period_bands_res.l_EQ[4], &soundEval.period_bands_res.l_EQ[5],
+					&soundEval.period_bands_res.l_EQ[6], &soundEval.period_bands_res.l_EQ[7],
+					&soundEval.period_bands_res.l_EQ[8], &soundEval.period_bands_res.l_EQ[9],
+					&soundEval.period_bands_res.l_EQ[10], &soundEval.period_bands_res.l_EQ[11],
+					&soundEval.period_bands_res.l_EQ[12], &soundEval.period_bands_res.l_EQ[13],
+					&soundEval.period_bands_res.l_EQ[14], &soundEval.period_bands_res.l_EQ[15],
+					&soundEval.period_bands_res.l_EQ[16], &soundEval.period_bands_res.l_EQ[17],
+					&soundEval.period_bands_res.l_EQ[18], &soundEval.period_bands_res.l_EQ[19],
+					&soundEval.period_bands_res.l_EQ[20], &soundEval.period_bands_res.l_EQ[21],
+					&soundEval.period_bands_res.l_EQ[22], &soundEval.period_bands_res.l_EQ[23],
+					&soundEval.period_bands_res.l_EQ[24], &soundEval.period_bands_res.l_EQ[25],
+					&soundEval.period_bands_res.l_EQ[26], &soundEval.period_bands_res.l_EQ[27],
+					&soundEval.period_bands_res.l_EQ[28], &soundEval.period_bands_res.l_EQ[29],
+					&soundEval.period_bands_res.l_EQ[30], &soundEval.period_bands_res.l_EQ[31],
+					&soundEval.period_bands_res.l_EQ[32], &soundEval.period_bands_res.l_EQ[33],
+					&soundEval.period_bands_res.l_EQ[34], &soundEval.period_bands_res.l_EQ[35]);
+		if (res != 37) {
+			return -EINVAL;
+		}
+	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE){
+		res = sscanf(buf, "%llu "
+					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+					"%ld %ld",
+					&soundEval.period_bands_res.time_epoch_millisec,
+					&soundEval.period_bands_res.l_EQ[0], &soundEval.period_bands_res.l_EQ[1],
+					&soundEval.period_bands_res.l_EQ[2], &soundEval.period_bands_res.l_EQ[3],
+					&soundEval.period_bands_res.l_EQ[4], &soundEval.period_bands_res.l_EQ[5],
+					&soundEval.period_bands_res.l_EQ[6], &soundEval.period_bands_res.l_EQ[7],
+					&soundEval.period_bands_res.l_EQ[8], &soundEval.period_bands_res.l_EQ[9],
+					&soundEval.period_bands_res.l_EQ[10], &soundEval.period_bands_res.l_EQ[11]);
+		if (res != 13) {
+			return -EINVAL;
+		}
+	}
+	return count;
+}
+
+static ssize_t devAttrSndEvalFreqBandsType_show(struct device* dev, struct device_attribute* attr,
+		char *buf){
+	char val;
+
+	switch (soundEval.setting_freq_bands_type)
+	        {
+	        case ONE_THIRD_OCTAVE:
+	        	val = one_third_octave_freq_band_char;
+				break;
+	        case ONE_OCTAVE:
+	        	val = one_octave_freq_band_char;
+				break;
+	        default:
+	        	soundEval.setting_freq_bands_type = ONE_THIRD_OCTAVE;
+	        	val = one_third_octave_freq_band_char;
+	            break;
+	        }
+
+	return sprintf(buf, "%c\n", val);
+}
+
+static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+
+	unsigned int ret = soundEval.setting_freq_bands_type;
+	if (toUpper(buf[0]) == one_third_octave_freq_band_char) {
+		ret = ONE_THIRD_OCTAVE;
+	} else if (toUpper(buf[0]) == one_octave_freq_band_char) {
+		ret = ONE_OCTAVE;
+	} else {
+		return -EINVAL;
+	}
+
+	if (ret != soundEval.setting_freq_bands_type) {
+		soundEval.setting_freq_bands_type = ret;
+		write_settings_to_proc_buffer();
+	}
+
 	return count;
 }
 
