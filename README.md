@@ -182,7 +182,7 @@ The debounce state of each digital input at system start is UNDEFINED (-1), beca
 |----|:---:|:-:|-----------|
 |status|R|0|PIR sensor at rest|
 |status|R|1|PIR sensor detecting motion|
-|cnt|R/W|*val*|*val* indicates the number of times the status of the PIR sensor changes from LOW to HIGH. In write mode, only the value 0 is permitted as input value, for reset purpose.|
+|cnt|R/W|*val*|*val* is a counter that indicates the number of times the status of the PIR sensor changes from 0 to 1. In write mode, only the value 0 is permitted as input value, for reset purpose.|
 
 ### <a name="lux"></a>Light intensity - `/sys/class/exosensepi/lux/`
 
