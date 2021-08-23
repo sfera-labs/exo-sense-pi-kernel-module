@@ -84,7 +84,7 @@ const char one_third_octave_freq_band_char = '3';
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.0");
+MODULE_VERSION("2.1");
 
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;
@@ -196,6 +196,14 @@ struct DebounceBean {
 	unsigned long debOffStateCnt;
 };
 
+struct PirBean {
+	int gpio;
+	const char* irqDevName;
+	int pastValue;
+	int irqNum;
+	unsigned long onStateCnt;
+};
+
 struct DeviceAttrBean {
 	struct device_attribute devAttr;
 	int gpioMode;
@@ -261,6 +269,12 @@ static ssize_t devAttrGpio_show(struct device* dev,
 		struct device_attribute* attr, char *buf);
 
 static ssize_t devAttrGpio_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count);
+
+static ssize_t devAttrPirOnCounter_show(struct device* dev,
+		struct device_attribute* attr, char *buf);
+
+static ssize_t devAttrPirOnCounter_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
 static ssize_t devAttrGpioDeb_show(struct device* dev,
@@ -473,6 +487,13 @@ static struct SoundEvalBean soundEval = {
 								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0},
 };
 
+static struct PirBean pir = {
+	.gpio = GPIO_PIR,
+	.irqDevName = "exosensepi_pir",
+	.irqNum = 0,
+	.onStateCnt = 0,
+};
+
 static struct WiegandBean w1 = {
 	.d0 = {
 		.gpio = GPIO_TTL1,
@@ -499,6 +520,7 @@ static struct DebounceBean debounceBeans[] = {
 	[DI1] = {
 		.gpio = GPIO_DI1,
 		.debIrqDevName = "exosensepi_di1_deb",
+		.debIrqNum = 0,
 		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOnStateCnt = 0,
@@ -508,6 +530,7 @@ static struct DebounceBean debounceBeans[] = {
 	[DI2] = {
 		.gpio = GPIO_DI2,
 		.debIrqDevName = "exosensepi_di2_deb",
+		.debIrqNum = 0,
 		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOnStateCnt = 0,
@@ -810,6 +833,17 @@ static struct DeviceAttrBean devAttrBeansPir[] = {
 		},
 		.gpioMode = GPIO_MODE_IN,
 		.gpio = GPIO_PIR,
+	},
+
+	{
+		.devAttr = {
+			.attr = {
+				.name = "cnt",
+				.mode = 0660,
+			},
+			.show = devAttrPirOnCounter_show,
+			.store = devAttrPirOnCounter_store,
+		},
 	},
 
 	{ }
@@ -1263,6 +1297,28 @@ static ssize_t devAttrGpio_store(struct device* dev,
 		val = !val;
 	}
 	gpio_set_value(dab->gpio, val ? 1 : 0);
+	return count;
+}
+
+static ssize_t devAttrPirOnCounter_show(struct device* dev,
+		struct device_attribute* attr, char *buf){
+	return sprintf(buf, "%lu\n", pir.onStateCnt);
+}
+
+static ssize_t devAttrPirOnCounter_store(struct device* dev,
+		struct device_attribute* attr, const char *buf, size_t count){
+	unsigned long val;
+
+	int ret = kstrtoul(buf, 10, &val);
+	if (ret < 0) {
+		return ret;
+	}
+
+	if (val != 0) {
+		return -EINVAL;
+	}
+
+	pir.onStateCnt = ret;
 	return count;
 }
 
@@ -2558,6 +2614,24 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t gpio_pir_irq_handler(int irq, void *dev_id) {
+
+	if (pir.irqNum == irq && pir.gpio != 0) {
+		int actualGPIOStatus = gpio_get_value(pir.gpio);
+
+		if (pir.pastValue == actualGPIOStatus) {
+			return IRQ_HANDLED;
+		} else {
+			pir.pastValue = actualGPIOStatus;
+			if (actualGPIOStatus){
+				pir.onStateCnt++;
+			}
+		}
+	}
+
+	return IRQ_HANDLED;
+}
+
 static void cleanup(void) {
 	int di, ai;
 
@@ -2583,6 +2657,8 @@ static void cleanup(void) {
 		device_destroy(pDeviceClass, 0);
 		di++;
 	}
+
+	free_irq(pir.irqNum, NULL);
 
 	if (!IS_ERR(pDeviceClass)) {
 		class_destroy(pDeviceClass);
@@ -2669,6 +2745,15 @@ static int __init exosensepi_init(void) {
 			ai++;
 		}
 		di++;
+	}
+
+	if (!pir.irqNum) {
+		pir.irqNum = gpio_to_irq(pir.gpio);
+		if (request_irq(pir.irqNum,	(void *) gpio_pir_irq_handler, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,	pir.irqDevName,	NULL)) {
+			printk(KERN_ALERT "exosensepi: * | cannot register IRQ for PIR\n");
+			goto fail;
+		}
+		pir.pastValue = gpio_get_value(pir.gpio);
 	}
 
 	printk(KERN_INFO "exosensepi: - | ready\n");
