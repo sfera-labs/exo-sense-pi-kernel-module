@@ -84,7 +84,7 @@ const char one_third_octave_freq_band_char = '3';
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.1");
+MODULE_VERSION("2.2");
 
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;
@@ -415,8 +415,8 @@ static ssize_t devAttrWiegandPulseWidthMax_show(struct device* dev,
 static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
 		struct device_attribute* attr, const char *buf, size_t count);
 
-static unsigned long to_usec(struct timespec64 *t);
-static unsigned long diff_usec(struct timespec64 *t1, struct timespec64 *t2);
+static unsigned long long to_usec(struct timespec64 *t);
+static unsigned long long diff_usec(struct timespec64 *t1, struct timespec64 *t2);
 
 struct i2c_client *sht40_i2c_client = NULL;
 struct i2c_client *sgp40_i2c_client = NULL;
@@ -1325,7 +1325,7 @@ static ssize_t devAttrPirOnCounter_store(struct device* dev,
 static ssize_t devAttrGpioDeb_show(struct device *dev,
 		struct device_attribute *attr, char *buf) {
 	struct timespec64 now;
-	unsigned long diff;
+	unsigned long long diff;
 	int actualGPIOStatus;
 	struct DeviceAttrBean *dab;
 	int res;
@@ -1405,7 +1405,7 @@ static ssize_t devAttrGpioDebOnCnt_show(struct device *dev,
 		struct device_attribute *attr, char *buf) {
 	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
 	struct timespec64 now;
-	unsigned long diff;
+	unsigned long long diff;
 	int actualGPIOStatus;
 	unsigned long res;
 
@@ -1430,7 +1430,7 @@ static ssize_t devAttrGpioDebOffCnt_show(struct device *dev,
 		struct device_attribute *attr, char *buf) {
 	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
 	struct timespec64 now;
-	unsigned long diff;
+	unsigned long long diff;
 	int actualGPIOStatus;
 	unsigned long res;
 
@@ -2172,11 +2172,11 @@ static void wiegandReset(struct WiegandBean* w) {
 	w->d1.wasLow = false;
 }
 
-static unsigned long to_usec(struct timespec64 *t) {
+static unsigned long long to_usec(struct timespec64 *t) {
 	return (t->tv_sec * 1000000) + (t->tv_nsec / 1000);
 }
 
-static unsigned long diff_usec(struct timespec64 *t1, struct timespec64 *t2) {
+static unsigned long long diff_usec(struct timespec64 *t1, struct timespec64 *t2) {
 	struct timespec64 diff;
 	diff = timespec64_sub(*t2, *t1);
 	return to_usec(&diff);
@@ -2186,7 +2186,7 @@ static irq_handler_t wiegandDataIrqHandler(unsigned int irq, void *dev_id,
 		struct pt_regs *regs) {
 	bool isLow;
 	struct timespec64 now;
-	unsigned long diff;
+	unsigned long long diff;
 	struct WiegandLine* l = NULL;
 
 	if (w1.enabled) {
@@ -2384,7 +2384,7 @@ static ssize_t devAttrWiegandEnabled_store(struct device* dev,
 static ssize_t devAttrWiegandData_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
 	struct timespec64 now;
-	unsigned long diff;
+	unsigned long long diff;
 
 	if (!w1.enabled) {
 		return -ENODEV;
@@ -2396,7 +2396,7 @@ static ssize_t devAttrWiegandData_show(struct device* dev,
 		return -EBUSY;
 	}
 
-	return sprintf(buf, "%lu %d %llu\n", to_usec(&w1.lastBitTs), w1.bitCount,
+	return sprintf(buf, "%llu %d %llu\n", to_usec(&w1.lastBitTs), w1.bitCount,
 			w1.data);
 }
 
@@ -2573,7 +2573,7 @@ static struct i2c_driver exosensepi_i2c_driver = {
 static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 	struct timespec64 now;
 	int db = 0;
-	unsigned long diff;
+	unsigned long long diff;
 	int actualGPIOStatus;
 
 	ktime_get_raw_ts64(&now);
