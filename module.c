@@ -20,12 +20,13 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/time.h>
-
+#include <linux/kthread.h>
 #include <linux/proc_fs.h>
-#include <asm/uaccess.h>
+#include <asm/uaccess.h> // TODO use #include <linux/uaccess.h> ?
 #include <linux/fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <linux/sort.h>
 
 #include "sensirion/sht4x/sht4x.h"
 #include "sensirion/sgp40/sgp40.h"
@@ -49,6 +50,10 @@
 #define GPIO_TTL2 5
 
 #define WIEGAND_MAX_BITS 64
+
+#define THA_READ_INTERVAL_MS 1000
+#define THA_DT_MEDIAN_PERIOD_MS 600000
+#define THA_DT_MEDIAN_SAMPLES (THA_DT_MEDIAN_PERIOD_MS / THA_READ_INTERVAL_MS)
 
 #define RH_ADJ_MIN_TEMP_OFFSET (-100)
 #define RH_ADJ_MAX_TEMP_OFFSET (400)
@@ -84,7 +89,7 @@ const char one_third_octave_freq_band_char = '3';
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.2");
+MODULE_VERSION("2.3");
 
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;
@@ -189,6 +194,7 @@ struct DebounceBean {
 	int debValue;
 	int debPastValue;
 	int debIrqNum;
+	bool debIrqRequested;
 	struct timespec64 lastDebIrqTs;
 	unsigned long debOnMinTime_usec;
 	unsigned long debOffMinTime_usec;
@@ -201,6 +207,7 @@ struct PirBean {
 	const char* irqDevName;
 	int pastValue;
 	int irqNum;
+	bool irqRequested;
 	unsigned long onStateCnt;
 };
 
@@ -426,10 +433,17 @@ struct i2c_client *opt3001_i2c_client = NULL;
 struct mutex exosensepi_i2c_mutex;
 static VocAlgorithmParams voc_algorithm_params;
 
+static struct task_struct *tha_thread;
+static volatile uint16_t tha_ready = false;
+static volatile int32_t tha_t, tha_rh, tha_dt, tha_tCal, tha_rhCal, tha_voc_index;
+static volatile uint16_t tha_sraw;
+static volatile int tha_temp_offset = 0;
+static int32_t tha_dt_median_buff[THA_DT_MEDIAN_SAMPLES];
+static int32_t tha_dt_median_sort[THA_DT_MEDIAN_SAMPLES];
+static uint16_t tha_dt_idx = 0;
+
 static bool ttl1enabled = false;
 static bool ttl2enabled = false;
-
-static int temp_offset = 0;
 
 static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 	1970, 1955, 1941, 1927, 1912, 1898, 1885, 1871, 1857, 1843, 1830, 1816,
@@ -490,7 +504,7 @@ static struct SoundEvalBean soundEval = {
 static struct PirBean pir = {
 	.gpio = GPIO_PIR,
 	.irqDevName = "exosensepi_pir",
-	.irqNum = 0,
+	.irqRequested = false,
 	.onStateCnt = 0,
 };
 
@@ -520,7 +534,7 @@ static struct DebounceBean debounceBeans[] = {
 	[DI1] = {
 		.gpio = GPIO_DI1,
 		.debIrqDevName = "exosensepi_di1_deb",
-		.debIrqNum = 0,
+		.debIrqRequested = false,
 		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOnStateCnt = 0,
@@ -530,7 +544,7 @@ static struct DebounceBean debounceBeans[] = {
 	[DI2] = {
 		.gpio = GPIO_DI2,
 		.debIrqDevName = "exosensepi_di2_deb",
-		.debIrqNum = 0,
+		.debIrqRequested = false,
 		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
 		.debOnStateCnt = 0,
@@ -1182,6 +1196,7 @@ static struct DeviceBean devices[] = {
 
 void write_settings_to_proc_buffer(void){
 	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
+	// TODO: no check on tmp
 	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s%d%s",
 				default_settings[0], soundEval.setting_time_weight,
 				default_settings[1], soundEval.setting_freq_weight,
@@ -1664,14 +1679,17 @@ static int16_t lm75aRead(struct i2c_client *client, int32_t *temp) {
 	return 0;
 }
 
-static int16_t thReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
-		int32_t* tCal, int32_t* rhCal) {
-	int rhIdx;
+static int32_t cmpint32(const void *a, const void *b) {
+	return *(int32_t *)a - *(int32_t *)b;
+}
+
+static int16_t thaReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
+		int32_t* tCal, int32_t* rhCal, uint16_t* sraw, int32_t* voc_index) {
+	int rhIdx, i;
 	int16_t ret;
 	int32_t t9, t16, tOff;
 
 	ret = sht4x_measure_blocking_read(t, rh);
-
 	if (ret < 0) {
 		return ret;
 	}
@@ -1686,24 +1704,47 @@ static int16_t thReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
 		return ret;
 	}
 
-	*dt = t16 - t9;
-	if (*dt <= 0) {
-		return -EIO;
+	ret = sgp40_measure_raw_with_rht_blocking_read(*rh, *t, sraw);
+	if (ret < 0) {
+		return ret;
 	}
+
+	VocAlgorithm_process(&voc_algorithm_params, *sraw, voc_index);
+
+	*dt = t16 - t9;
+	if (*dt < 0) {
+		*dt = 0;
+	}
+
+	if (tha_ready) {
+		tha_dt_median_buff[tha_dt_idx] = *dt;
+	} else {
+		for (i = 0; i < THA_DT_MEDIAN_SAMPLES; i++) {
+			tha_dt_median_buff[i] = *dt;
+		}
+	}
+	tha_dt_idx = (tha_dt_idx + 1) % THA_DT_MEDIAN_SAMPLES;
+
+	for (i = 0; i < THA_DT_MEDIAN_SAMPLES; i++) {
+		tha_dt_median_sort[i] = tha_dt_median_buff[i];
+	}
+	sort(tha_dt_median_sort, THA_DT_MEDIAN_SAMPLES, sizeof(int32_t), &cmpint32, NULL);
+
+	*dt = tha_dt_median_sort[THA_DT_MEDIAN_SAMPLES / 2];
 
 	// t [°C/1000]
 	// rh [%/1000]
 	// t9,t16,dt [°C/100]
-	// temp_offset [°C/100]
-	// temp_calib_b [°C/100]
+	// tha_temp_offset [°C/100]
+	// temp_calib_b [°C/1000]
 	// temp_calib_m [1/1000]
 
 	*tCal = (
 			(100 * (*t)) // 100 * t [°C/1000] = t [°C/100000]
-			+ (temp_calib_m * (*dt)) // tmpCalibM [1/1000] * dt [°C/100] = tmpCalibM * 1000 * dt [°C/100] = tmpCalibM * dt [°C/100000]
-					+ (100 * temp_calib_b) // 100 * tmpCalibB [°C/1000] = tmpCalibB [°C/100000]
+			+ (temp_calib_m * (*dt)) // temp_calib_m [1/1000] * dt [°C/100] = temp_calib_m * 1000 * dt [°C/100] = temp_calib_m * dt [°C/100000]
+					+ (100 * temp_calib_b) // 100 * temp_calib_b [°C/1000] = temp_calib_b [°C/100000]
 			);// [°C/100000]
-	*tCal = DIV_ROUND_CLOSEST(*tCal, 1000) + temp_offset; // [°C/100]
+	*tCal = DIV_ROUND_CLOSEST(*tCal, 1000) + tha_temp_offset; // [°C/100]
 
 	*t /= 10; // [°C/100]
 	*rh /= 10; // [%/100]
@@ -1727,57 +1768,64 @@ static int16_t thReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
 	return 0;
 }
 
+int thaThreadFunction(void *data) {
+	int16_t i, ret;
+	int32_t t, rh, dt, tCal, rhCal, voc_index;
+	uint16_t sraw;
+
+	while (!kthread_should_stop()) {
+		if (!exosensepi_i2c_lock()) {
+			msleep(100);
+			continue;
+		}
+
+		for (i = 0; i < 3; i++) {
+			ret = thaReadCalibrate(&t, &rh, &dt, &tCal, &rhCal, &sraw,
+					&voc_index);
+			if (ret == 0) {
+				tha_t = t;
+				tha_rh = rh;
+				tha_dt = dt;
+				tha_tCal = tCal;
+				tha_rhCal = rhCal;
+				tha_voc_index = voc_index;
+				tha_sraw = sraw;
+				tha_ready = true;
+				break;
+			}
+		}
+
+		exosensepi_i2c_unlock();
+
+		msleep(THA_READ_INTERVAL_MS);
+	}
+
+	return 0;
+}
+
 static ssize_t devAttrThaTh_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
-	int8_t ret;
-	int32_t t, rh, dt, tCal, rhCal;
-
-	if (!exosensepi_i2c_lock()) {
+	if (!tha_ready) {
 		return -EBUSY;
 	}
 
-	ret = thReadCalibrate(&t, &rh, &dt, &tCal, &rhCal);
-
-	exosensepi_i2c_unlock();
-
-	if (ret < 0) {
-		return ret;
-	}
-
-	return sprintf(buf, "%d %d %d %d %d\n", dt, t, tCal, rh, rhCal);
+	return sprintf(buf, "%d %d %d %d %d\n", tha_dt, tha_t, tha_tCal, tha_rh,
+			tha_rhCal);
 }
 
 static ssize_t devAttrThaThv_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
-	int16_t ret;
-	int32_t t, rh, dt, tCal, rhCal, voc_index;
-	uint16_t sraw;
-
-	if (!exosensepi_i2c_lock()) {
+	if (!tha_ready) {
 		return -EBUSY;
 	}
 
-	ret = thReadCalibrate(&t, &rh, &dt, &tCal, &rhCal);
-
-	if (ret == NO_ERROR) {
-		ret = sgp40_measure_raw_with_rht_blocking_read(rh, t, &sraw);
-	}
-
-	exosensepi_i2c_unlock();
-
-	if (ret < 0) {
-		return ret;
-	}
-
-	VocAlgorithm_process(&voc_algorithm_params, sraw, &voc_index);
-
-	return sprintf(buf, "%d %d %d %d %d %d %d\n", dt, t, tCal, rh, rhCal, sraw,
-			voc_index);
+	return sprintf(buf, "%d %d %d %d %d %d %d\n", tha_dt, tha_t, tha_tCal,
+			tha_rh, tha_rhCal, tha_sraw, tha_voc_index);
 }
 
 static ssize_t devAttrThaTempOffset_show(struct device* dev,
 		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, "%d\n", temp_offset);
+	return sprintf(buf, "%d\n", tha_temp_offset);
 }
 
 static ssize_t devAttrThaTempOffset_store(struct device* dev,
@@ -1790,7 +1838,7 @@ static ssize_t devAttrThaTempOffset_store(struct device* dev,
 		return ret;
 	}
 
-	temp_offset = val;
+	tha_temp_offset = val;
 
 	return count;
 }
@@ -2615,8 +2663,7 @@ static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
 }
 
 static irqreturn_t gpio_pir_irq_handler(int irq, void *dev_id) {
-
-	if (pir.irqNum == irq && pir.gpio != 0) {
+	if (pir.irqNum == irq) {
 		int actualGPIOStatus = gpio_get_value(pir.gpio);
 
 		if (pir.pastValue == actualGPIOStatus) {
@@ -2648,8 +2695,11 @@ static void cleanup(void) {
 				if (devices[di].devAttrBeans[ai].gpioMode != 0) {
 					gpio_free(devices[di].devAttrBeans[ai].gpio);
 				}
-				if (devices[di].devAttrBeans[ai].debBean != NULL){
-					free_irq(devices[di].devAttrBeans[ai].debBean->debIrqNum, NULL);
+				if (devices[di].devAttrBeans[ai].debBean != NULL) {
+					if (devices[di].devAttrBeans[ai].debBean->debIrqRequested) {
+						free_irq(devices[di].devAttrBeans[ai].debBean->debIrqNum, NULL);
+						devices[di].devAttrBeans[ai].debBean->debIrqRequested = false;
+					}
 				}
 				ai++;
 			}
@@ -2658,7 +2708,9 @@ static void cleanup(void) {
 		di++;
 	}
 
-	free_irq(pir.irqNum, NULL);
+	if (pir.irqRequested) {
+		free_irq(pir.irqNum, NULL);
+	}
 
 	if (!IS_ERR(pDeviceClass)) {
 		class_destroy(pDeviceClass);
@@ -2666,8 +2718,14 @@ static void cleanup(void) {
 
 	wiegandDisable(&w1);
 
+	// TODO no check on parent
+	// TODO entry needs to be removed?
 	remove_proc_entry(procfs_setting_file_name, parent);
 	remove_proc_entry(procfs_folder_name, NULL);
+
+	if (tha_thread) {
+		kthread_stop(tha_thread);
+	}
 }
 
 static int __init exosensepi_init(void) {
@@ -2675,14 +2733,6 @@ static int __init exosensepi_init(void) {
 	int di, ai;
 
 	printk(KERN_INFO "exosensepi: - | init\n");
-
-	parent = proc_mkdir(procfs_folder_name, NULL);
-	entry = proc_create(procfs_setting_file_name, 0444, parent, &proc_fops);
-	if (!entry) {
-		return -1;
-	}
-
-	write_settings_to_proc_buffer();
 
 	i2c_add_driver(&exosensepi_i2c_driver);
 	mutex_init(&exosensepi_i2c_mutex);
@@ -2727,7 +2777,7 @@ static int __init exosensepi_init(void) {
 				}
 			}
 			if (devices[di].devAttrBeans[ai].debBean != NULL) {
-				if (!devices[di].devAttrBeans[ai].debBean->debIrqNum) {
+				if (!devices[di].devAttrBeans[ai].debBean->debIrqRequested) {
 					devices[di].devAttrBeans[ai].debBean->debIrqNum = gpio_to_irq(devices[di].devAttrBeans[ai].debBean->gpio);
 					if (request_irq(devices[di].devAttrBeans[ai].debBean->debIrqNum,
 									(void *) gpio_deb_irq_handler,
@@ -2737,6 +2787,7 @@ static int __init exosensepi_init(void) {
 						printk(KERN_ALERT "exosensepi: * | cannot register IRQ of %s in device %s\n", devices[di].devAttrBeans[ai].devAttr.attr.name, devices[di].name);
 						goto fail;
 					}
+					devices[di].devAttrBeans[ai].debBean->debIrqRequested = true;
 					ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debBean->lastDebIrqTs);
 					devices[di].devAttrBeans[ai].debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
 					devices[di].devAttrBeans[ai].debBean->debPastValue = gpio_get_value(devices[di].devAttrBeans[ai].debBean->gpio);
@@ -2747,14 +2798,33 @@ static int __init exosensepi_init(void) {
 		di++;
 	}
 
-	if (!pir.irqNum) {
-		pir.irqNum = gpio_to_irq(pir.gpio);
-		if (request_irq(pir.irqNum,	(void *) gpio_pir_irq_handler, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,	pir.irqDevName,	NULL)) {
-			printk(KERN_ALERT "exosensepi: * | cannot register IRQ for PIR\n");
-			goto fail;
-		}
-		pir.pastValue = gpio_get_value(pir.gpio);
+	pir.irqRequested = false;
+	pir.irqNum = gpio_to_irq(pir.gpio);
+	if (request_irq(pir.irqNum,	(void *) gpio_pir_irq_handler, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,	pir.irqDevName,	NULL)) {
+		printk(KERN_ALERT "exosensepi: * | cannot register IRQ for PIR\n");
+		goto fail;
 	}
+	pir.irqRequested = true;
+	pir.pastValue = gpio_get_value(pir.gpio);
+
+	// TODO use significative var names, handle errors and do proper cleanup
+	parent = proc_mkdir(procfs_folder_name, NULL);
+	// TODO why is event global?
+	entry = proc_create(procfs_setting_file_name, 0444, parent, &proc_fops);
+	if (!entry) {
+		// TODO go to fail
+		return -1;
+	}
+
+	write_settings_to_proc_buffer();
+
+	tha_thread = kthread_run(thaThreadFunction, NULL, "exosensepi THA");
+	if (!tha_thread) {
+		printk(KERN_ALERT "exosensepi: * | THA thread creation failed\n");
+		goto fail;
+	}
+
+	// TODO use get_task_struct() ? see https://github.com/slavaim/Linux-kernel-modules/blob/master/kthread/kthread.c
 
 	printk(KERN_INFO "exosensepi: - | ready\n");
 	return 0;
