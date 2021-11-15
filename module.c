@@ -22,7 +22,7 @@
 #include <linux/time.h>
 #include <linux/kthread.h>
 #include <linux/proc_fs.h>
-#include <asm/uaccess.h> // TODO use #include <linux/uaccess.h> ?
+#include <linux/uaccess.h> // TODO use #include <linux/uaccess.h> ?
 #include <linux/fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
@@ -93,8 +93,8 @@ MODULE_VERSION("2.3");
 
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;
-struct proc_dir_entry *entry;
-struct proc_dir_entry *parent;
+struct proc_dir_entry *proc_file;
+struct proc_dir_entry *proc_folder;
 
 const char procfs_folder_name[] = "exosensepi";
 const char procfs_setting_file_name[] = "sound_eval_settings";
@@ -1196,17 +1196,19 @@ static struct DeviceBean devices[] = {
 
 void write_settings_to_proc_buffer(void){
 	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
-	// TODO: no check on tmp
-	sprintf(tmp, "%s%d%s%d%s%lu%s%d%s%d%s",
-				default_settings[0], soundEval.setting_time_weight,
-				default_settings[1], soundEval.setting_freq_weight,
-				default_settings[2], soundEval.setting_interval,
-				default_settings[3], soundEval.setting_freq_bands_type,
-				default_settings[4], !soundEval.setting_enable_utility,
-				default_settings[5]);
-	memcpy(&procfs_buffer, tmp, strlen(tmp));
-	procfs_buffer_size = strlen(tmp);
-	kfree(tmp);
+	// TODO: no check on tmp - DONE
+	if (tmp != NULL) {
+		sprintf(tmp, "%s%d%s%d%s%lu%s%d%s%d%s",
+					default_settings[0], soundEval.setting_time_weight,
+					default_settings[1], soundEval.setting_freq_weight,
+					default_settings[2], soundEval.setting_interval,
+					default_settings[3], soundEval.setting_freq_bands_type,
+					default_settings[4], !soundEval.setting_enable_utility,
+					default_settings[5]);
+		memcpy(&procfs_buffer, tmp, strlen(tmp));
+		procfs_buffer_size = strlen(tmp);
+		kfree(tmp);
+	}
 }
 
 static char toUpper(char c) {
@@ -2718,10 +2720,14 @@ static void cleanup(void) {
 
 	wiegandDisable(&w1);
 
-	// TODO no check on parent
-	// TODO entry needs to be removed?
-	remove_proc_entry(procfs_setting_file_name, parent);
-	remove_proc_entry(procfs_folder_name, NULL);
+	// TODO no check on proc_folder - DONE
+	// TODO entry needs to be removed? _DONE
+	if (proc_folder != NULL) {
+		if (proc_file != NULL) {
+			remove_proc_entry(procfs_setting_file_name, proc_folder);
+		}
+		remove_proc_entry(procfs_folder_name, NULL);
+	}
 
 	if (tha_thread) {
 		kthread_stop(tha_thread);
@@ -2807,13 +2813,16 @@ static int __init exosensepi_init(void) {
 	pir.irqRequested = true;
 	pir.pastValue = gpio_get_value(pir.gpio);
 
-	// TODO use significative var names, handle errors and do proper cleanup
-	parent = proc_mkdir(procfs_folder_name, NULL);
+	// TODO use significative var names (DONE), handle errors and do proper cleanup (DONE)
+	proc_folder = proc_mkdir(procfs_folder_name, NULL);
+	if (NULL == proc_folder) {
+		goto fail;
+	}
 	// TODO why is event global?
-	entry = proc_create(procfs_setting_file_name, 0444, parent, &proc_fops);
-	if (!entry) {
-		// TODO go to fail
-		return -1;
+	proc_file = proc_create(procfs_setting_file_name, 0444, proc_folder, &proc_fops);
+	if (NULL == proc_file) {
+		// TODO go to fail (DONE)
+		goto fail;
 	}
 
 	write_settings_to_proc_buffer();
