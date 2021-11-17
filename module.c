@@ -150,7 +150,7 @@ static ssize_t procfile_write(struct file* file,const char __user *buffer,size_t
     if(!tmp)return -ENOMEM;
     if(copy_from_user(tmp,buffer,count)){
         kfree(tmp);
-        return EFAULT;
+        return -EFAULT;
     }
 
     tlen = PROCFS_MAX_SIZE;
@@ -1194,7 +1194,7 @@ static struct DeviceBean devices[] = {
 	{ }
 };
 
-void write_settings_to_proc_buffer(void){
+int write_settings_to_proc_buffer(void){
 	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
 	// TODO: no check on tmp - DONE
 	if (tmp != NULL) {
@@ -1208,6 +1208,11 @@ void write_settings_to_proc_buffer(void){
 		memcpy(&procfs_buffer, tmp, strlen(tmp));
 		procfs_buffer_size = strlen(tmp);
 		kfree(tmp);
+
+		return 0;
+	} else {
+		printk(KERN_ALERT "exosensepi: * | proc setting file write failed\n");
+		return -ENOMEM;
 	}
 }
 
@@ -1975,7 +1980,10 @@ static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 
 	if (ret != soundEval.setting_time_weight) {
 		soundEval.setting_time_weight = ret;
-		write_settings_to_proc_buffer();
+		int error = write_settings_to_proc_buffer();
+		if (error != 0){
+			return error;
+		}
 	}
 
 	return count;
@@ -2021,7 +2029,10 @@ static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 
 	if (ret != soundEval.setting_freq_weight) {
 		soundEval.setting_freq_weight = ret;
-		write_settings_to_proc_buffer();
+		int error = write_settings_to_proc_buffer();
+		if (error != 0){
+			return error;
+		}
 	}
 
 	return count;
@@ -2044,7 +2055,10 @@ static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
 
 	if (val != soundEval.setting_interval){
 		soundEval.setting_interval = val;
-		write_settings_to_proc_buffer();
+		int error = write_settings_to_proc_buffer();
+		if (error != 0){
+			return error;
+		}
 	}
 
 	return count;
@@ -2071,7 +2085,10 @@ static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 
 	if (val != soundEval.setting_enable_utility){
 		soundEval.setting_enable_utility = val;
-		write_settings_to_proc_buffer();
+		int error = write_settings_to_proc_buffer();
+		if (error != 0){
+			return error;
+		}
 	}
 
 	return count;
@@ -2202,7 +2219,10 @@ static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
 
 	if (ret != soundEval.setting_freq_bands_type) {
 		soundEval.setting_freq_bands_type = ret;
-		write_settings_to_proc_buffer();
+		int error = write_settings_to_proc_buffer();
+		if (error != 0){
+			return error;
+		}
 	}
 
 	return count;
@@ -2825,7 +2845,9 @@ static int __init exosensepi_init(void) {
 		goto fail;
 	}
 
-	write_settings_to_proc_buffer();
+	if (write_settings_to_proc_buffer() != 0){
+		goto fail;
+	}
 
 	tha_thread = kthread_run(thaThreadFunction, NULL, "exosensepi THA");
 	if (!tha_thread) {
