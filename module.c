@@ -22,7 +22,7 @@
 #include <linux/time.h>
 #include <linux/kthread.h>
 #include <linux/proc_fs.h>
-#include <linux/uaccess.h> // TODO use #include <linux/uaccess.h> ?
+#include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
@@ -1196,7 +1196,6 @@ static struct DeviceBean devices[] = {
 
 int write_settings_to_proc_buffer(void){
 	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
-	// TODO: no check on tmp - DONE
 	if (tmp != NULL) {
 		sprintf(tmp, "%s%d%s%d%s%lu%s%d%s%d%s",
 					default_settings[0], soundEval.setting_time_weight,
@@ -1979,11 +1978,11 @@ static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 	}
 
 	if (ret != soundEval.setting_time_weight) {
-		soundEval.setting_time_weight = ret;
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
 			return error;
 		}
+		soundEval.setting_time_weight = ret;
 	}
 
 	return count;
@@ -2028,11 +2027,11 @@ static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 	}
 
 	if (ret != soundEval.setting_freq_weight) {
-		soundEval.setting_freq_weight = ret;
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
 			return error;
 		}
+		soundEval.setting_freq_weight = ret;
 	}
 
 	return count;
@@ -2054,11 +2053,11 @@ static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
 	}
 
 	if (val != soundEval.setting_interval){
-		soundEval.setting_interval = val;
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
 			return error;
 		}
+		soundEval.setting_interval = val;
 	}
 
 	return count;
@@ -2084,11 +2083,11 @@ static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 	}
 
 	if (val != soundEval.setting_enable_utility){
-		soundEval.setting_enable_utility = val;
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
 			return error;
 		}
+		soundEval.setting_enable_utility = val;
 	}
 
 	return count;
@@ -2218,11 +2217,11 @@ static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
 	}
 
 	if (ret != soundEval.setting_freq_bands_type) {
-		soundEval.setting_freq_bands_type = ret;
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
 			return error;
 		}
+		soundEval.setting_freq_bands_type = ret;
 	}
 
 	return count;
@@ -2740,8 +2739,6 @@ static void cleanup(void) {
 
 	wiegandDisable(&w1);
 
-	// TODO no check on proc_folder - DONE
-	// TODO entry needs to be removed? _DONE
 	if (proc_folder != NULL) {
 		if (proc_file != NULL) {
 			remove_proc_entry(procfs_setting_file_name, proc_folder);
@@ -2833,15 +2830,13 @@ static int __init exosensepi_init(void) {
 	pir.irqRequested = true;
 	pir.pastValue = gpio_get_value(pir.gpio);
 
-	// TODO use significative var names (DONE), handle errors and do proper cleanup (DONE)
 	proc_folder = proc_mkdir(procfs_folder_name, NULL);
 	if (NULL == proc_folder) {
 		goto fail;
 	}
-	// TODO why is event global?
+
 	proc_file = proc_create(procfs_setting_file_name, 0444, proc_folder, &proc_fops);
 	if (NULL == proc_file) {
-		// TODO go to fail (DONE)
 		goto fail;
 	}
 
@@ -2854,8 +2849,6 @@ static int __init exosensepi_init(void) {
 		printk(KERN_ALERT "exosensepi: * | THA thread creation failed\n");
 		goto fail;
 	}
-
-	// TODO use get_task_struct() ? see https://github.com/slavaim/Linux-kernel-modules/blob/master/kthread/kthread.c
 
 	printk(KERN_INFO "exosensepi: - | ready\n");
 	return 0;
