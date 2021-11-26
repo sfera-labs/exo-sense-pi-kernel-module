@@ -1978,11 +1978,14 @@ static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 	}
 
 	if (ret != soundEval.setting_time_weight) {
+		unsigned int pre = soundEval.setting_time_weight;
+		soundEval.setting_time_weight = ret;
+
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
+			soundEval.setting_time_weight = pre;
 			return error;
 		}
-		soundEval.setting_time_weight = ret;
 	}
 
 	return count;
@@ -2027,11 +2030,14 @@ static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 	}
 
 	if (ret != soundEval.setting_freq_weight) {
+		unsigned int pre = soundEval.setting_freq_weight;
+		soundEval.setting_freq_weight = ret;
+
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
+			soundEval.setting_freq_weight = pre;
 			return error;
 		}
-		soundEval.setting_freq_weight = ret;
 	}
 
 	return count;
@@ -2053,11 +2059,14 @@ static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
 	}
 
 	if (val != soundEval.setting_interval){
+		long pre = soundEval.setting_interval;
+		soundEval.setting_interval = val;
+
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
+			soundEval.setting_interval = pre;
 			return error;
 		}
-		soundEval.setting_interval = val;
 	}
 
 	return count;
@@ -2083,11 +2092,14 @@ static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 	}
 
 	if (val != soundEval.setting_enable_utility){
+		unsigned int pre = soundEval.setting_enable_utility;
+		soundEval.setting_enable_utility = val;
+
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
+			soundEval.setting_enable_utility = pre;
 			return error;
 		}
-		soundEval.setting_enable_utility = val;
 	}
 
 	return count;
@@ -2217,11 +2229,14 @@ static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
 	}
 
 	if (ret != soundEval.setting_freq_bands_type) {
+		unsigned int pre = soundEval.setting_freq_bands_type;
+		soundEval.setting_freq_bands_type = ret;
+
 		int error = write_settings_to_proc_buffer();
 		if (error != 0){
+			soundEval.setting_freq_bands_type = pre;
 			return error;
 		}
-		soundEval.setting_freq_bands_type = ret;
 	}
 
 	return count;
