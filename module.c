@@ -89,7 +89,7 @@ const char one_third_octave_freq_band_char = '3';
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.3");
+MODULE_VERSION("2.4");
 
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;
@@ -2291,7 +2291,9 @@ static irq_handler_t wiegandDataIrqHandler(unsigned int irq, void *dev_id,
 
 	if (l->wasLow == isLow) {
 		// got the interrupt but didn't change state. Maybe a fast pulse
-		w1.noise = 10;
+		if (w1->noise == 0) {
+			w1.noise = 10;
+		}
 		return (irq_handler_t) IRQ_HANDLED;
 	}
 
