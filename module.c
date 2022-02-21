@@ -89,7 +89,7 @@ const char one_third_octave_freq_band_char = '3';
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.5");
+MODULE_VERSION("2.6");
 
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;

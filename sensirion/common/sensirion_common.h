@@ -87,7 +87,7 @@ uint32_t sensirion_bytes_to_uint32_t(const uint8_t* bytes);
  * @param bytes An array of at least four bytes (MSB first)
  * @return      The byte array represented as float
  */
-float sensirion_bytes_to_float(const uint8_t* bytes);
+// float sensirion_bytes_to_float(const uint8_t* bytes);
 
 uint8_t sensirion_common_generate_crc(const uint8_t* data, uint16_t count);
 

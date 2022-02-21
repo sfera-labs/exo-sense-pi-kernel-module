@@ -48,6 +48,7 @@ uint32_t sensirion_bytes_to_uint32_t(const uint8_t* bytes) {
            (uint32_t)bytes[2] << 8 | (uint32_t)bytes[3];
 }
 
+/*
 float sensirion_bytes_to_float(const uint8_t* bytes) {
     union {
         uint32_t u32_value;
@@ -57,6 +58,7 @@ float sensirion_bytes_to_float(const uint8_t* bytes) {
     tmp.u32_value = sensirion_bytes_to_uint32_t(bytes);
     return tmp.float32;
 }
+*/
 
 uint8_t sensirion_common_generate_crc(const uint8_t* data, uint16_t count) {
     uint16_t current_byte;
