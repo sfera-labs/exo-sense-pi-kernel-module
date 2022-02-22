@@ -15,10 +15,10 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [Light intensity](#lux)
     - [Buzzer](#buzzer)
     - [Wiegand](#wiegand)
-    - [Microphone](#microphone)
-    - [Sound Evaluation Utility - SoundEval](#soundEval)
     - [Secure element](#sec-elem)
     - [1-Wire](#1wire)
+    - [Microphone](#microphone)
+    - [Sound Evaluation Utility - SoundEval](#soundEval)
 
 ## <a name="install"></a>Compile and Install
 
@@ -241,6 +241,23 @@ The following properties can be used to improve noise detection and filtering. T
 |noise|R|14|Pulse too short|
 |noise|R|15|Pulse too long|
 
+### <a name="sec-elem"></a>Secure Element - `/sys/class/exosensepi/sec_elem/`
+
+|File|R/W|Value|Description|
+|----|:---:|:-:|-----------|
+|serial_num|R|9 1-byte HEX values|Secure element serial number|
+
+### <a name="1wire"></a>1-Wire
+
+If 1-wire is configured, you will find the list of connected 1-Wire sensors' IDs in `/sys/bus/w1/devices/` with format `28-XXXXXXXXXXXX`.    
+To get the measured temperature read the file `w1_slave` under the sensor's directory, e.g.:
+
+    $ cat /sys/bus/w1/devices/28-XXXXXXXXXXXX/w1_slave 
+    25 01 55 00 7f ff 0c 0c 08 : crc=08 YES
+    25 01 55 00 7f ff 0c 0c 08 t=18312
+    
+At the end of the first line you will read `YES` if the communication succeded and the read temperature value will be reported at the end of the second line expressed in &deg;C/1000.
+
 ### <a name="microphone"></a>Microphone
 
 The I2S MEMS microphone can be used with the standard ALSA drivers.
@@ -386,20 +403,3 @@ Explaining all the different classes of sound level meters is out of the scope o
 |weight_freq_bands|R/W|1|1 octave frequency weighting table selected|
 |weight_freq_bands|R/W|3|1/3 octave frequency weighting table selected|
 |interval_sec|R/W|*val*|*val* is the custom interval of evaluation in seconds. If set to 0, the interval evaluation is not running and the leq_interval file with interval evaluation result is not updated|
-
-### <a name="sec-elem"></a>Secure Element - `/sys/class/exosensepi/sec_elem/`
-
-|File|R/W|Value|Description|
-|----|:---:|:-:|-----------|
-|serial_num|R|9 1-byte HEX values|Secure element serial number|
-
-### <a name="1wire"></a>1-Wire
-
-If 1-wire is configured, you will find the list of connected 1-Wire sensors' IDs in `/sys/bus/w1/devices/` with format `28-XXXXXXXXXXXX`.    
-To get the measured temperature read the file `w1_slave` under the sensor's directory, e.g.:
-
-    $ cat /sys/bus/w1/devices/28-XXXXXXXXXXXX/w1_slave 
-    25 01 55 00 7f ff 0c 0c 08 : crc=08 YES
-    25 01 55 00 7f ff 0c 0c 08 t=18312
-    
-At the end of the first line you will read `YES` if the communication succeded and the read temperature value will be reported at the end of the second line expressed in &deg;C/1000.
