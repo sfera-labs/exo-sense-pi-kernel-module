@@ -54,12 +54,6 @@ Add to `/boot/config.txt` the following line:
 If you want to use TTL1 as 1-Wire bus, add this line too:
 
     dtoverlay=w1-gpio
-
-Optionally, to be able to use `soundEval` (sound level evaluation utility), specifically created for ExoSense Pi:
-
-    sh install-snd-eval.sh
-    
-This script will install 2 required libraries for the `soundEval` utility: `libasound2-dev` and `libfftw3-dev`. The installed version of `libasound2-dev` must be `>=1.1.8-1+rpt1`, and the installed version of `libfftw3-dev` must be `>=3.3.8-2`.
     
 Optionally, to be able to use the `/sys/class/exosensepi/` files not as super user, create a new group "exosensepi" and set it as the module owner group by adding an udev rule:
 
@@ -75,8 +69,14 @@ Install the calibration script and service:
     sudo cp exosensepi-calibrate.service /lib/systemd/system/
     sudo cp exosensepi-calibrate.py /usr/local/bin/
     sudo chmod +x /usr/local/bin/exosensepi-calibrate.py
+    
+To use the [sound level evaluation functionalities](#soundEval), install the `soundEval` utility:
 
-Reboot:
+    sh install-snd-eval.sh
+    
+This script will install 2 required libraries for the `soundEval` utility: `libasound2-dev` (version `>=1.1.8-1+rpt1` required) and `libfftw3-dev` (version `>=3.3.8-2` required).
+
+Finally, reboot:
 
     sudo reboot
 
