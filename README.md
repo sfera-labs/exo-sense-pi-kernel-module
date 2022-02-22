@@ -18,7 +18,7 @@ Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/produc
     - [Secure element](#sec-elem)
     - [1-Wire](#1wire)
     - [Microphone](#microphone)
-    - [Sound Evaluation Utility - SoundEval](#soundEval)
+    - [SoundEval - Sound Level Evaluation Utility](#soundEval)
 
 ## <a name="install"></a>Compile and Install
 
@@ -291,7 +291,7 @@ You can now record from the `dmic_sv` device with adjusted volume:
 
     arecord -D dmic_sv -c2 -r 44100 -f S32_LE -t wav -V mono -v rec-vol.wav
     
-### <a name="soundEval"></a>SoundEval Sound Level Evaluation Utility - `/sys/class/exosensepi/sound_eval/`
+### <a name="soundEval"></a>SoundEval - Sound Level Evaluation Utility
 
 The `soundEval` utility is capable of providing the results of different classes of sound level meters (LEQ = Equivalent Continuous Sound Level), such as:
 
@@ -314,11 +314,11 @@ The `soundEval` utility is capable of providing the results of different classes
      - LCEQ,I = Equiv. contin. sound level with impulse time weighting and C frequency weighting
                 (time weighting = impulse 35ms, C-weighting frequency weighting, results in dB(C))
 
-The `soundEval` utility essentially performs 2 types of analysis:
+Essentially, it is able to perform 2 types of analysis:
 
-1- **Period evaluation**: continuous evaluation of short time periods (125ms if time weight = fast, 1000ms if time weight = slow, 35ms if time weight = impulse). This type of evaluation is commonly used to build applications as classifier of specific events/sounds. E.g. if our purpose is to detect fast impulse sounds as gun shots or explosions, we may use an LAEQ,I type period evaluation, and when the sound level is above a certain threshold, it's possible to trigger immediate actions right after the detection.
+- **Period evaluation**: continuous evaluation of short time periods (125ms if time weight = fast, 1000ms if time weight = slow, 35ms if time weight = impulse). This type of evaluation is commonly used to build applications as classifier of specific events/sounds. E.g. if our purpose is to detect fast impulse sounds as gun shots or explosions, we may use an LAEQ,I type period evaluation, and when the sound level is above a certain threshold, it's possible to trigger immediate actions right after the detection.
 
-2- **Interval evaluation**: continuous evaluation of prolonged time intervals, specified by the user. This type of evaluation is suited for applications where the period of time in analysis is bigger than the time constants fast, slow or impulse. An example of application is where we analyze an interval of 8 working hours with a LAEQ,F type sound meter, and if the equivalent continuous sound level is bigger than the threshold specified by the legislation regarding the maximum sound level in a working environment (usually 85dB(A)), we know that it's time to consider the use of personal sound protective equipment.
+- **Interval evaluation**: continuous evaluation of prolonged time intervals, specified by the user. This type of evaluation is suited for applications where the period of time in analysis is bigger than the time constants fast, slow or impulse. An example of application is where we analyze an interval of 8 working hours with a LAEQ,F type sound meter, and if the equivalent continuous sound level is bigger than the threshold specified by the legislation regarding the maximum sound level in a working environment (usually 85dB(A)), we know that it's time to consider the use of personal sound protective equipment.
 The interval evaluation result represents the Root Mean Square value of the acustic pressure for that interval, and is not the sum of the results of the single period evaluations which the interval is composed of.
 
 If frequency type A-weighting or C-weighting is selected, the sound levels are adjusted according to the values of a specific table with adjustment factors. This table groups the adjustment factors into bandwidths of octaves or fractions of octaves. The `soundEval` utility allows the choice between groups of 1 octave or groups of 1/3 octaves.
@@ -379,21 +379,25 @@ If frequency type A-weighting or C-weighting is selected, the sound levels are a
 |8000|-1.1|-3.0|
 |16000|-6.6|-8.5|
 
-Explaining all the different classes of sound level meters is out of the scope of this documentation, but following are some general rules, with hope that it will be helpful to the user for the right choice:
-- FAST TIME WEIGHT is usually used to replicate the natural response of human ear (125ms)
-- SLOW TIME WEIGHT is good at "ignoring" short, fast sounds like car doors slamming or balloons popping. his makes slow weighting a good choice for environmental noise studies, especially for studies that span many hours or even days.
-- IMPULSE TIME WEIGHT is usually used in situations where there are sharp impulsive noises to be measured, such as fireworks or gun shots.
-- A-WEIGHTING FREQ WEIGHT: the data are frequency weighted according to the A-WEIGHTING function, which main purpose is to replicate the human ear response at different frequency bandwidths.
-- Z-WEIGHTING FREQ WEIGHT: no frequency adjustments are made in base to the frequency bandwidths.
-- C-WEIGHTING FREQ WEIGHT: flat response with the extreme high (near 20kHz) and low (near 0 Hz) frequencies attenuated.
+Explaining all the different classes of sound level meters is out of the scope of this documentation, but following are some general rules, with hope that it will be helpful to the user for the right choice.
+
+**Time weighting**:
+- **Fast**: is usually used to replicate the natural response of human ear (125ms)
+- **Slow**: is good at "ignoring" short, fast sounds like car doors slamming or balloons popping. his makes slow weighting a good choice for environmental noise studies, especially for studies that span many hours or even days.
+- **Impulse**: is usually used in situations where there are sharp impulsive noises to be measured, such as fireworks or gun shots.
+
+**Frequency weighting**:
+- **A**: the data are frequency weighted according to the A-WEIGHTING function, which main purpose is to replicate the human ear response at different frequency bandwidths.
+- **C**: flat response with the extreme high (near 20kHz) and low (near 0 Hz) frequencies attenuated.
+- **Z**: no frequency adjustments are made in base to the frequency bandwidths.
+
+
+The `soundEval` utility functionalities can be accessed under `/sys/class/exosensepi/sound_eval/`:
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|enabled|R/W|0|Utility disabled, audio card available|
-|enabled|R/W|1|Utility enabled, audio card controlled by `soundEval` utility|
-|leq_period|R|*ts* *val*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val* is the result of the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val* has value -1 and *ts* has value 0.|
-|leq_interval|R|*ts* *val*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val* is the result of the interval evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val* has value -1 and *ts* has value 0.|
-|leq_period_bands|R|*ts* *val_1* *val_2* .. *val_n*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val_1* *val_2* .. *val_n* are the equivalent sound levels of each frequency bandwidth detected during the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val_1* *val_2* .. *val_n* have value -1 and *ts* has value 0.|
+|enabled|R/W|0|Utility disabled, audio card available for other applications|
+|enabled|R/W|1|Utility enabled, audio card used by `soundEval`|
 |weight_time|R/W|F|FAST time weighting selected|
 |weight_time|R/W|S|SLOW time weighting selected|
 |weight_time|R/W|I|IMPULSE time weighting selected|
@@ -403,3 +407,6 @@ Explaining all the different classes of sound level meters is out of the scope o
 |weight_freq_bands|R/W|1|1 octave frequency weighting table selected|
 |weight_freq_bands|R/W|3|1/3 octave frequency weighting table selected|
 |interval_sec|R/W|*val*|*val* is the custom interval of evaluation in seconds. If set to 0, the interval evaluation is not running and the leq_interval file with interval evaluation result is not updated|
+|leq_period|R|*ts* *val*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val* is the result of the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val* has value -1 and *ts* has value 0.|
+|leq_interval|R|*ts* *val*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val* is the result of the interval evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val* has value -1 and *ts* has value 0.|
+|leq_period_bands|R|*ts* *val_1* *val_2* .. *val_n*|*ts* represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *ts* is in Unix time epoch format in milliseconds. *val_1* *val_2* .. *val_n* are the equivalent sound levels of each frequency bandwidth detected during the period evaluation, in millidecibels according to the set time (fast, slow or impulse), frequency weighting (dB, dB(A) or dB(C)) and frequency weighting table (1 octave or 1/3 octave). If the first evaluation is not yet complete or the utility has never been enabled, *val_1* *val_2* .. *val_n* have value -1 and *ts* has value 0.|
