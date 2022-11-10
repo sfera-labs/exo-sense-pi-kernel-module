@@ -137,9 +137,9 @@ The debounce state of each digital input at system start is UNDEFINED (-1), beca
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|di*N*_deb|R|1|Digital input *N* debounced value high|
-|di*N*_deb|R|0|Digital input *N* debounced value low|
-|di*N*_deb|R|-1|Digital input *N* debounced value undefined|
+|di*N*_deb<sup>([pollable](https://github.com/sfera-labs/knowledge-base/blob/main/raspberrypi/poll-sysfs-files.md))</sup>|R|1|Digital input *N* debounced value high|
+|di*N*_deb<sup>([pollable](https://github.com/sfera-labs/knowledge-base/blob/main/raspberrypi/poll-sysfs-files.md))</sup>|R|0|Digital input *N* debounced value low|
+|di*N*_deb<sup>([pollable](https://github.com/sfera-labs/knowledge-base/blob/main/raspberrypi/poll-sysfs-files.md))</sup>|R|-1|Digital input *N* debounced value undefined|
 |di*N*_deb_on_ms|RW|val|Minimum stable time in ms to trigger change of the debounced value of digital input *N* to high state. Default value=50|
 |di*N*_deb_off_ms|RW|val|Minimum stable time in ms to trigger change of the debounced value of digital input *N* to low state. Default value=50|
 |di*N*_deb_on_cnt|R|val| Number of times with the debounced value of the digital input *N* in high state. Rolls back to 0 after 4294967295|
@@ -182,8 +182,8 @@ The debounce state of each digital input at system start is UNDEFINED (-1), beca
 
 |File|R/W|Value|Description|
 |----|:---:|:-:|-----------|
-|status|R|0|PIR sensor at rest|
-|status|R|1|PIR sensor detecting motion|
+|status<sup>([pollable](https://github.com/sfera-labs/knowledge-base/blob/main/raspberrypi/poll-sysfs-files.md))</sup>|R|0|PIR sensor at rest|
+|status<sup>([pollable](https://github.com/sfera-labs/knowledge-base/blob/main/raspberrypi/poll-sysfs-files.md))</sup>|R|1|PIR sensor detecting motion|
 |cnt|R/W|*val*|*val* is a counter that indicates the number of times the status of the PIR sensor changes from 0 to 1. In write mode, only the value 0 is permitted as input value, for reset purpose. Rolls back to 0 after 4294967295|
 
 ### <a name="lux"></a>Light intensity - `/sys/class/exosensepi/lux/`
@@ -224,7 +224,7 @@ You can use the TTL lines as a Wiegand interface for a keypad or card reader. Co
 |----|:---:|:-:|-----------|
 |enabled|R/W|0|Wiegand interface disabled|
 |enabled|R/W|1|Wiegand interface enabled|
-|data|R|*ts* *bits* *data*|Latest data read. The first number (*ts*) represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *bits* reports the number of bits received (max 64). *data* is the sequence of bits received represnted as unsigned integer|
+|data<sup>([pollable](https://github.com/sfera-labs/knowledge-base/blob/main/raspberrypi/poll-sysfs-files.md))</sup>|R|*ts* *bits* *data*|Latest data read. The first number (*ts*) represents an internal timestamp of the received data, it shall be used only to discern newly available data from the previous one. *bits* reports the number of bits received (max 64). *data* is the sequence of bits received represnted as unsigned integer|
 
 The following properties can be used to improve noise detection and filtering. The noise property reports the latest event and is reset to 0 after being read.
 
