@@ -1,7 +1,7 @@
 /*
  * Exo Sense Pi kernel module
  *
- *     Copyright (C) 2020-2021 Sfera Labs S.r.l.
+ *     Copyright (C) 2020-2022 Sfera Labs S.r.l.
  *
  *     For information, visit https://www.sferalabs.cc
  *
@@ -12,14 +12,19 @@
  *
  */
 
-#include <linux/delay.h>
-#include <linux/gpio.h>
-#include <linux/i2c.h>
-#include <linux/init.h>
-#include <linux/kernel.h>
+#include "commons/commons.h"
+#include "gpio/gpio.h"
+#include "wiegand/wiegand.h"
+#include "atecc/atecc.h"
+#include "sensirion/sht4x/sht4x.h"
+#include "sensirion/sgp40/sgp40.h"
+#include "sensirion/sgp40_voc_index/sensirion_voc_algorithm.h"
 #include <linux/module.h>
-#include <linux/interrupt.h>
-#include <linux/time.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/of.h>
+#include <linux/delay.h>
+#include <linux/i2c.h>
 #include <linux/kthread.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
@@ -27,14 +32,6 @@
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
-
-#include "sensirion/sht4x/sht4x.h"
-#include "sensirion/sgp40/sgp40.h"
-#include "sensirion/sgp40_voc_index/sensirion_voc_algorithm.h"
-#include "atecc/atecc.h"
-
-#define GPIO_MODE_IN 1
-#define GPIO_MODE_OUT 2
 
 #define GPIO_LED 22
 #define GPIO_BUZZ 27
@@ -49,8 +46,6 @@
 #define GPIO_TTL1 4
 #define GPIO_TTL2 5
 
-#define WIEGAND_MAX_BITS 64
-
 #define THA_READ_INTERVAL_MS 1000
 #define THA_DT_MEDIAN_PERIOD_MS 600000
 #define THA_DT_MEDIAN_SAMPLES (THA_DT_MEDIAN_PERIOD_MS / THA_READ_INTERVAL_MS)
@@ -59,12 +54,22 @@
 #define RH_ADJ_MAX_TEMP_OFFSET (400)
 #define RH_ADJ_FACTOR (1000)
 
-#define DEBOUNCE_DEFAULT_TIME_USEC 50000ul
-#define DEBOUNCE_STATE_NOT_DEFINED -1
-
 #define PROCFS_MAX_SIZE 1024
 
 #define SND_EVAL_MAX_BANDS 36
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
+MODULE_DESCRIPTION("Exo Sense Pi driver module");
+MODULE_VERSION("2.7");
+
+static int temp_calib_m = -1000;
+module_param( temp_calib_m, int, S_IRUGO);
+MODULE_PARM_DESC(temp_calib_m, " Temperature calibration param M");
+
+static int temp_calib_b = -3000;
+module_param( temp_calib_b, int, S_IRUGO);
+MODULE_PARM_DESC(temp_calib_b, " Temperature calibration param B");
 
 enum snd_time_weighting_mode {
 	FAST_WEIGHTING, SLOW_WEIGHTING, IMPULSE_WEIGHTING
@@ -86,11 +91,6 @@ enum snd_frequency_bands_type {
 const char one_octave_freq_band_char = '1';
 const char one_third_octave_freq_band_char = '3';
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
-MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.7");
-
 char procfs_buffer[PROCFS_MAX_SIZE];
 unsigned long procfs_buffer_size = 0;
 struct proc_dir_entry *proc_file;
@@ -98,153 +98,101 @@ struct proc_dir_entry *proc_folder;
 
 const char procfs_folder_name[] = "exosensepi";
 const char procfs_setting_file_name[] = "sound_eval_settings";
-const char default_settings[][PROCFS_MAX_SIZE] = {
+const char default_settings[][PROCFS_MAX_SIZE] =
 		{
-			"version=2.0.0\n"
-			"device=exosensepi-mic\n"
-			"time="
-		},
-		{
-			"\n"
-			"frequency="
-		},
-		{
-			"\n"
-			"interval="
-		},
-		{
-			"\n"
-			"freq-bands="
-		},
-		{
-			"\n"
-			"period-result=/sys/class/exosensepi/sound_eval/leq_period\n"
-			"interval-result=/sys/class/exosensepi/sound_eval/leq_interval\n"
-			"period-bands-result=/sys/class/exosensepi/sound_eval/leq_period_bands\n"
-			"continuous=1\n"
-			"interval-only=0\n"
-			"quiet=1\n"
-			"disable="
-		},
-		{
-			"\n"
-			"setting-check-sec=5\n"
-		}
-};
+			{
+				"version=2.0.0\n"
+					"device=exosensepi-mic\n"
+					"time="
+			},
+			{
+				"\n"
+					"frequency="
+			},
+			{
+				"\n"
+					"interval="
+			},
+			{
+				"\n"
+					"freq-bands="
+			},
+			{
+				"\n"
+					"period-result=/sys/class/exosensepi/sound_eval/leq_period\n"
+					"interval-result=/sys/class/exosensepi/sound_eval/leq_interval\n"
+					"period-bands-result=/sys/class/exosensepi/sound_eval/leq_period_bands\n"
+					"continuous=1\n"
+					"interval-only=0\n"
+					"quiet=1\n"
+					"disable="
+			},
+			{
+				"\n"
+					"setting-check-sec=5\n"
+			}
+		};
 
-static ssize_t procfile_read(struct file *file, char __user *buffer, size_t count, loff_t *offset)
+static ssize_t procfile_read(struct file *file, char __user *buffer,
+		size_t count, loff_t *offset)
 {
-    if (*offset > 0 || count < PROCFS_MAX_SIZE) /* we have finished to read, return 0 */
-        return 0;
+	if (*offset > 0 || count < PROCFS_MAX_SIZE) /* we have finished to read, return 0 */
+		return 0;
 
-    if(copy_to_user(buffer, procfs_buffer, procfs_buffer_size))
-        return -EFAULT;
+	if (copy_to_user(buffer, procfs_buffer, procfs_buffer_size))
+		return -EFAULT;
 
-    *offset = procfs_buffer_size;
-    return procfs_buffer_size;
+	*offset = procfs_buffer_size;
+	return procfs_buffer_size;
 }
 
-static ssize_t procfile_write(struct file* file,const char __user *buffer,size_t count,loff_t *f_pos){
-    int tlen;
-    char *tmp = kzalloc((count+1),GFP_KERNEL);
-    if(!tmp)return -ENOMEM;
-    if(copy_from_user(tmp,buffer,count)){
-        kfree(tmp);
-        return -EFAULT;
-    }
+static ssize_t procfile_write(struct file *file, const char __user *buffer,
+		size_t count, loff_t *f_pos) {
+	int tlen;
+	char *tmp = kzalloc((count + 1), GFP_KERNEL);
+	if (!tmp)
+		return -ENOMEM;
+	if (copy_from_user(tmp, buffer, count)) {
+		kfree(tmp);
+		return -EFAULT;
+	}
 
-    tlen = PROCFS_MAX_SIZE;
-    if (count < PROCFS_MAX_SIZE)
-        tlen = count;
-    memcpy(&procfs_buffer,tmp,tlen);
-    procfs_buffer_size = tlen;
-    kfree(tmp);
-    return tlen;
+	tlen = PROCFS_MAX_SIZE;
+	if (count < PROCFS_MAX_SIZE)
+		tlen = count;
+	memcpy(&procfs_buffer, tmp, tlen);
+	procfs_buffer_size = tlen;
+	kfree(tmp);
+	return tlen;
 }
 
-static int procfile_show(struct seq_file *m,void *v){
-    static char *str = NULL;
-    seq_printf(m,"%s\n",str);
-    return 0;
+static int procfile_show(struct seq_file *m, void *v) {
+	static char *str = NULL;
+	seq_printf(m, "%s\n", str);
+	return 0;
 }
 
-static int procfile_open(struct inode *inode,struct file *file){
-    return single_open(file,procfile_show,NULL);
+static int procfile_open(struct inode *inode, struct file *file) {
+	return single_open(file, procfile_show, NULL);
 }
 
 static struct proc_ops proc_fops = {
-    .proc_lseek = seq_lseek,
-    .proc_open = procfile_open,
-    .proc_read = procfile_read,
-    .proc_release = single_release,
-    .proc_write = procfile_write,
-};
-
-static int temp_calib_m = -1000;
-module_param(temp_calib_m, int, S_IRUGO);
-MODULE_PARM_DESC(temp_calib_m, " Temperature calibration param M");
-
-static int temp_calib_b = -3000;
-module_param(temp_calib_b, int, S_IRUGO);
-MODULE_PARM_DESC(temp_calib_b, " Temperature calibration param B");
-
-struct DebounceBean {
-	int gpio;
-	const char* debIrqDevName;
-	int debValue;
-	int debPastValue;
-	int debIrqNum;
-	bool debIrqRequested;
-	struct timespec64 lastDebIrqTs;
-	unsigned long debOnMinTime_usec;
-	unsigned long debOffMinTime_usec;
-	unsigned long debOnStateCnt;
-	unsigned long debOffStateCnt;
-};
-
-struct PirBean {
-	int gpio;
-	const char* irqDevName;
-	int pastValue;
-	int irqNum;
-	bool irqRequested;
-	unsigned long onStateCnt;
+	.proc_lseek = seq_lseek,
+	.proc_open = procfile_open,
+	.proc_read = procfile_read,
+	.proc_release = single_release,
+	.proc_write = procfile_write,
 };
 
 struct DeviceAttrBean {
 	struct device_attribute devAttr;
-	int gpioMode;
-	int gpio;
-	bool invert;
-	struct DebounceBean *debBean;
+	struct GpioBean *gpio;
 };
 
 struct DeviceBean {
 	char *name;
 	struct device *pDevice;
 	struct DeviceAttrBean *devAttrBeans;
-};
-
-struct WiegandLine {
-	int gpio;
-	unsigned int irq;
-	bool irqRequested;
-	bool wasLow;
-};
-
-struct WiegandBean {
-	struct WiegandLine d0;
-	struct WiegandLine d1;
-	struct WiegandLine *activeLine;
-	unsigned long pulseIntervalMin_usec;
-	unsigned long pulseIntervalMax_usec;
-	unsigned long pulseWidthMin_usec;
-	unsigned long pulseWidthMax_usec;
-	bool enabled;
-	uint64_t data;
-	int bitCount;
-	int noise;
-	struct timespec64 lastBitTs;
 };
 
 struct soundEvalResult {
@@ -272,158 +220,80 @@ struct SoundEvalBean {
 
 static struct class *pDeviceClass;
 
-static ssize_t devAttrGpio_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
+static ssize_t devAttrPirOnCounter_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrGpio_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrThaTh_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrPirOnCounter_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
+static ssize_t devAttrThaThv_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrPirOnCounter_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrThaTempOffset_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrGpioDeb_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
+static ssize_t devAttrThaTempOffset_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrGpioDebMsOn_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
+static ssize_t devAttrLm75aU9_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrGpioDebMsOn_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrLm75aU16_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrGpioDebMsOff_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
+static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrGpioDebMsOff_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrGpioDebOnCnt_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrGpioDebOffCnt_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrGpioBlink_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrTtlMode_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrTtlMode_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrThaTh_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrThaThv_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrThaTempOffset_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrThaTempOffset_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrLm75aU9_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrLm75aU16_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t opt3001_show(struct device* dev, struct device_attribute* attr,
+static ssize_t opt3001_show(struct device *dev, struct device_attribute *attr,
 		char *buf);
 
-static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
+static ssize_t devAttrSndEvalPeriodLEQ_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrSndEvalPeriodLEQ_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
+static ssize_t devAttrSndEvalIntervalLEQ_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrSndEvalIntervalLEQ_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalTimeWeight_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
+static ssize_t devAttrSndEvalTimeWeight_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrSndEvalTimeWeight_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalFreqWeight_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
+static ssize_t devAttrSndEvalFreqWeight_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrSndEvalFreqWeight_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalIntervalSec_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
+static ssize_t devAttrSndEvalIntervalSec_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrSndEvalIntervalSec_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalEnableUtility_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
+static ssize_t devAttrSndEvalEnableUtility_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrSndEvalEnableUtility_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
+static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
+static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
-static ssize_t devAttrSndEvalFreqBandsType_show(struct device* dev, struct device_attribute* attr,
-		char *buf);
+static ssize_t devAttrSndEvalFreqBandsType_show(struct device *dev,
+		struct device_attribute *attr, char *buf);
 
-static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrWiegandEnabled_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrWiegandEnabled_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrWiegandData_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrWiegandNoise_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrWiegandPulseIntervalMin_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrWiegandPulseIntervalMin_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrWiegandPulseIntervalMax_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrWiegandPulseIntervalMax_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrWiegandPulseWidthMin_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrWiegandPulseWidthMin_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static ssize_t devAttrWiegandPulseWidthMax_show(struct device* dev,
-		struct device_attribute* attr, char *buf);
-
-static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count);
-
-static unsigned long long to_usec(struct timespec64 *t);
-static unsigned long long diff_usec(struct timespec64 *t1, struct timespec64 *t2);
+static ssize_t devAttrSndEvalFreqBandsType_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count);
 
 struct i2c_client *sht40_i2c_client = NULL;
 struct i2c_client *sgp40_i2c_client = NULL;
@@ -435,15 +305,13 @@ static VocAlgorithmParams voc_algorithm_params;
 
 static struct task_struct *tha_thread;
 static volatile uint16_t tha_ready = false;
-static volatile int32_t tha_t, tha_rh, tha_dt, tha_tCal, tha_rhCal, tha_voc_index;
+static volatile int32_t tha_t, tha_rh, tha_dt, tha_tCal, tha_rhCal,
+		tha_voc_index;
 static volatile uint16_t tha_sraw;
 static volatile int tha_temp_offset = 0;
 static int32_t tha_dt_median_buff[THA_DT_MEDIAN_SAMPLES];
 static int32_t tha_dt_median_sort[THA_DT_MEDIAN_SAMPLES];
 static uint16_t tha_dt_idx = 0;
-
-static bool ttl1enabled = false;
-static bool ttl2enabled = false;
 
 static int32_t rhAdjLookup[] = { 2089, 2074, 2059, 2044, 2029, 2014, 1999, 1984,
 	1970, 1955, 1941, 1927, 1912, 1898, 1885, 1871, 1857, 1843, 1830, 1816,
@@ -495,63 +363,85 @@ static struct SoundEvalBean soundEval = {
 
 	.setting_freq_bands_type = ONE_THIRD_OCTAVE,
 	.period_bands_res.time_epoch_millisec = 0,
-	.period_bands_res.l_EQ = {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
-								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
-								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
-								 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0},
+	.period_bands_res.l_EQ = { -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+		-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+		-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+		-1.0, -1.0, -1.0, -1.0 },
 };
 
-static struct PirBean pir = {
-	.gpio = GPIO_PIR,
-	.irqDevName = "exosensepi_pir",
-	.irqRequested = false,
-	.onStateCnt = 0,
+enum digInEnum {
+	DI1 = 0,
+	DI2,
+	DI_SIZE,
 };
 
-static struct WiegandBean w1 = {
-	.d0 = {
+enum ttlEnum {
+	TTL1 = 0,
+	TTL2,
+	TTL_SIZE,
+};
+
+static struct GpioBean gpioLed = {
+	.name = "exosensepi_led",
+	.gpio = GPIO_LED,
+	.mode = GPIO_MODE_OUT,
+};
+
+static struct GpioBean gpioBuzz = {
+	.name = "exosensepi_buzz",
+	.gpio = GPIO_BUZZ,
+	.mode = GPIO_MODE_OUT,
+};
+
+static struct GpioBean gpioDO1 = {
+	.name = "exosensepi_do1",
+	.gpio = GPIO_DO1,
+	.mode = GPIO_MODE_OUT,
+};
+
+static struct DebouncedGpioBean gpioPir = {
+	.gpio = {
+		.name = "exosensepi_pir",
+		.gpio = GPIO_PIR,
+		.mode = GPIO_MODE_IN,
+	},
+};
+
+static struct DebouncedGpioBean gpioDI[] = {
+	[DI1] = {
+		.gpio = {
+			.name = "exosensepi_di1",
+			.gpio = GPIO_DI1,
+			.mode = GPIO_MODE_IN,
+		},
+	},
+	[DI2] = {
+		.gpio = {
+			.name = "exosensepi_di2",
+			.gpio = GPIO_DI2,
+			.mode = GPIO_MODE_IN,
+		},
+	},
+};
+
+static struct GpioBean gpioTtl[] = {
+	[TTL1] = {
+		.name = "exosensepi_ttl1",
 		.gpio = GPIO_TTL1,
-		.irqRequested = false,
+	},
+	[TTL2] = {
+		.name = "exosensepi_ttl2",
+		.gpio = GPIO_TTL2,
+	},
+};
+
+static struct WiegandBean w = {
+	.d0 = {
+		.gpio = &gpioTtl[TTL1],
 	},
 	.d1 = {
-		.gpio = GPIO_TTL2,
-		.irqRequested = false,
+		.gpio = &gpioTtl[TTL2],
 	},
-	.enabled = false,
-	.pulseWidthMin_usec = 10,
-	.pulseWidthMax_usec = 150,
-	.pulseIntervalMin_usec = 1200,
-	.pulseIntervalMax_usec = 2700,
-	.noise = 0,
-};
-
-enum digital_in {
-    DI1 = 0,
-    DI2,
-};
-
-static struct DebounceBean debounceBeans[] = {
-	[DI1] = {
-		.gpio = GPIO_DI1,
-		.debIrqDevName = "exosensepi_di1_deb",
-		.debIrqRequested = false,
-		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
-		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
-		.debOnStateCnt = 0,
-		.debOffStateCnt = 0,
-	},
-
-	[DI2] = {
-		.gpio = GPIO_DI2,
-		.debIrqDevName = "exosensepi_di2_deb",
-		.debIrqRequested = false,
-		.debOnMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
-		.debOffMinTime_usec = DEBOUNCE_DEFAULT_TIME_USEC,
-		.debOnStateCnt = 0,
-		.debOffStateCnt = 0,
-	},
-
-	{ }
 };
 
 static struct DeviceAttrBean devAttrBeansLed[] = {
@@ -564,8 +454,7 @@ static struct DeviceAttrBean devAttrBeansLed[] = {
 			.show = devAttrGpio_show,
 			.store = devAttrGpio_store,
 		},
-		.gpioMode = GPIO_MODE_OUT,
-		.gpio = GPIO_LED,
+		.gpio = &gpioLed,
 	},
 
 	{
@@ -577,8 +466,7 @@ static struct DeviceAttrBean devAttrBeansLed[] = {
 			.show = NULL,
 			.store = devAttrGpioBlink_store,
 		},
-		.gpioMode = GPIO_MODE_OUT,
-		.gpio = GPIO_LED,
+		.gpio = &gpioLed,
 	},
 
 	{ }
@@ -594,8 +482,7 @@ static struct DeviceAttrBean devAttrBeansBuzzer[] = {
 			.show = devAttrGpio_show,
 			.store = devAttrGpio_store,
 		},
-		.gpioMode = GPIO_MODE_OUT,
-		.gpio = GPIO_BUZZ,
+		.gpio = &gpioBuzz,
 	},
 
 	{
@@ -607,8 +494,7 @@ static struct DeviceAttrBean devAttrBeansBuzzer[] = {
 			.show = NULL,
 			.store = devAttrGpioBlink_store,
 		},
-		.gpioMode = GPIO_MODE_OUT,
-		.gpio = GPIO_BUZZ,
+		.gpio = &gpioBuzz,
 	},
 
 	{ }
@@ -624,8 +510,7 @@ static struct DeviceAttrBean devAttrBeansDigitalOut[] = {
 			.show = devAttrGpio_show,
 			.store = devAttrGpio_store,
 		},
-		.gpioMode = GPIO_MODE_OUT,
-		.gpio = GPIO_DO1,
+		.gpio = &gpioDO1,
 	},
 
 	{ }
@@ -641,8 +526,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpio_show,
 			.store = NULL,
 		},
-		.gpioMode = GPIO_MODE_IN,
-		.gpio = GPIO_DI1,
+		.gpio = &gpioDI[DI1].gpio,
 	},
 
 	{
@@ -654,8 +538,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpio_show,
 			.store = NULL,
 		},
-		.gpioMode = GPIO_MODE_IN,
-		.gpio = GPIO_DI2,
+		.gpio = &gpioDI[DI2].gpio,
 	},
 
 	{
@@ -667,7 +550,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDeb_show,
 			.store = NULL,
 		},
-		.debBean = &debounceBeans[DI1],
+		.gpio = &gpioDI[DI1].gpio,
 	},
 
 	{
@@ -679,7 +562,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDeb_show,
 			.store = NULL,
 		},
-		.debBean = &debounceBeans[DI2],
+		.gpio = &gpioDI[DI2].gpio,
 	},
 
 	{
@@ -691,7 +574,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDebMsOn_show,
 			.store = devAttrGpioDebMsOn_store,
 		},
-		.debBean = &debounceBeans[DI1],
+		.gpio = &gpioDI[DI1].gpio,
 	},
 
 	{
@@ -703,7 +586,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDebMsOff_show,
 			.store = devAttrGpioDebMsOff_store,
 		},
-		.debBean = &debounceBeans[DI1],
+		.gpio = &gpioDI[DI1].gpio,
 	},
 
 	{
@@ -715,7 +598,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDebMsOn_show,
 			.store = devAttrGpioDebMsOn_store,
 		},
-		.debBean = &debounceBeans[DI2],
+		.gpio = &gpioDI[DI2].gpio,
 	},
 
 	{
@@ -727,7 +610,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDebMsOff_show,
 			.store = devAttrGpioDebMsOff_store,
 		},
-		.debBean = &debounceBeans[DI2],
+		.gpio = &gpioDI[DI2].gpio,
 	},
 
 	{
@@ -739,7 +622,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDebOnCnt_show,
 			.store = NULL,
 		},
-		.debBean = &debounceBeans[DI1],
+		.gpio = &gpioDI[DI1].gpio,
 	},
 
 	{
@@ -751,7 +634,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDebOffCnt_show,
 			.store = NULL,
 		},
-		.debBean = &debounceBeans[DI1],
+		.gpio = &gpioDI[DI1].gpio,
 	},
 
 	{
@@ -763,7 +646,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDebOnCnt_show,
 			.store = NULL,
 		},
-		.debBean = &debounceBeans[DI2],
+		.gpio = &gpioDI[DI2].gpio,
 	},
 
 	{
@@ -775,7 +658,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIn[] = {
 			.show = devAttrGpioDebOffCnt_show,
 			.store = NULL,
 		},
-		.debBean = &debounceBeans[DI2],
+		.gpio = &gpioDI[DI2].gpio,
 	},
 
 	{ }
@@ -788,10 +671,10 @@ static struct DeviceAttrBean devAttrBeansDigitalIO[] = {
 				.name = "ttl1_mode",
 				.mode = 0660,
 			},
-			.show = devAttrTtlMode_show,
-			.store = devAttrTtlMode_store,
+			.show = devAttrGpioMode_show,
+			.store = devAttrGpioMode_store,
 		},
-		.gpio = GPIO_TTL1,
+		.gpio = &gpioTtl[TTL1],
 	},
 
 	{
@@ -800,10 +683,10 @@ static struct DeviceAttrBean devAttrBeansDigitalIO[] = {
 				.name = "ttl2_mode",
 				.mode = 0660,
 			},
-			.show = devAttrTtlMode_show,
-			.store = devAttrTtlMode_store,
+			.show = devAttrGpioMode_show,
+			.store = devAttrGpioMode_store,
 		},
-		.gpio = GPIO_TTL2,
+		.gpio = &gpioTtl[TTL2],
 	},
 
 	{
@@ -815,8 +698,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIO[] = {
 			.show = devAttrGpio_show,
 			.store = devAttrGpio_store,
 		},
-		.gpioMode = 0,
-		.gpio = GPIO_TTL1,
+		.gpio = &gpioTtl[TTL1],
 	},
 
 	{
@@ -828,8 +710,7 @@ static struct DeviceAttrBean devAttrBeansDigitalIO[] = {
 			.show = devAttrGpio_show,
 			.store = devAttrGpio_store,
 		},
-		.gpioMode = 0,
-		.gpio = GPIO_TTL2,
+		.gpio = &gpioTtl[TTL2],
 	},
 
 	{ }
@@ -842,11 +723,10 @@ static struct DeviceAttrBean devAttrBeansPir[] = {
 				.name = "status",
 				.mode = 0440,
 			},
-			.show = devAttrGpio_show,
+			.show = devAttrGpioDeb_show,
 			.store = NULL,
 		},
-		.gpioMode = GPIO_MODE_IN,
-		.gpio = GPIO_PIR,
+		.gpio = &gpioPir.gpio,
 	},
 
 	{
@@ -855,9 +735,10 @@ static struct DeviceAttrBean devAttrBeansPir[] = {
 				.name = "cnt",
 				.mode = 0660,
 			},
-			.show = devAttrPirOnCounter_show,
+			.show = devAttrGpioDebOnCnt_show,
 			.store = devAttrPirOnCounter_store,
 		},
+		.gpio = &gpioPir.gpio,
 	},
 
 	{ }
@@ -1011,7 +892,6 @@ static struct DeviceAttrBean devAttrBeansSound[] = {
 			.store = devAttrSndEvalFreqWeight_store,
 		},
 	},
-
 
 	{
 		.devAttr = {
@@ -1194,16 +1074,16 @@ static struct DeviceBean devices[] = {
 	{ }
 };
 
-int write_settings_to_proc_buffer(void){
+int write_settings_to_proc_buffer(void) {
 	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
 	if (tmp != NULL) {
 		sprintf(tmp, "%s%d%s%d%s%lu%s%d%s%d%s",
-					default_settings[0], soundEval.setting_time_weight,
-					default_settings[1], soundEval.setting_freq_weight,
-					default_settings[2], soundEval.setting_interval,
-					default_settings[3], soundEval.setting_freq_bands_type,
-					default_settings[4], !soundEval.setting_enable_utility,
-					default_settings[5]);
+				default_settings[0], soundEval.setting_time_weight,
+				default_settings[1], soundEval.setting_freq_weight,
+				default_settings[2], soundEval.setting_interval,
+				default_settings[3], soundEval.setting_freq_bands_type,
+				default_settings[4], !soundEval.setting_enable_utility,
+				default_settings[5]);
 		memcpy(&procfs_buffer, tmp, strlen(tmp));
 		procfs_buffer_size = strlen(tmp);
 		kfree(tmp);
@@ -1215,372 +1095,35 @@ int write_settings_to_proc_buffer(void){
 	}
 }
 
-static char toUpper(char c) {
-	if (c >= 97 && c <= 122) {
-		return c - 32;
-	}
-	return c;
-}
-
-static int gpioSetup(struct DeviceBean* db, struct DeviceAttrBean* dab) {
-	int result = 0;
-	char gpioReqName[128];
-	char *gpioReqNamePart;
-
-	strcpy(gpioReqName, "exosensepi_");
-	gpioReqNamePart = gpioReqName + strlen("exosensepi_");
-
-	strcpy(gpioReqNamePart, db->name);
-	gpioReqNamePart[strlen(db->name)] = '_';
-
-	strcpy(gpioReqNamePart + strlen(db->name) + 1, dab->devAttr.attr.name);
-
-	gpio_request(dab->gpio, gpioReqName);
-	if (dab->gpioMode == GPIO_MODE_OUT) {
-		result = gpio_direction_output(dab->gpio, false);
-	} else if (dab->gpioMode == GPIO_MODE_IN) {
-		result = gpio_direction_input(dab->gpio);
-	}
-
-	return result;
-}
-
-static struct DeviceBean* devGetBean(struct device* dev) {
-	int di;
-	di = 0;
-	while (devices[di].name != NULL) {
-		if (dev == devices[di].pDevice) {
-			return &devices[di];
-		}
-		di++;
-	}
-	return NULL;
-}
-
-static struct DeviceAttrBean* devAttrGetBean(struct DeviceBean* devBean,
-		struct device_attribute* attr) {
-	int ai;
-	if (devBean == NULL) {
+struct GpioBean* gpioGetBean(struct device *dev, struct device_attribute *attr) {
+	struct DeviceAttrBean *dab;
+	dab = container_of(attr, struct DeviceAttrBean, devAttr);
+	if (dab == NULL) {
 		return NULL;
 	}
-	ai = 0;
-	while (devBean->devAttrBeans[ai].devAttr.attr.name != NULL) {
-		if (attr == &devBean->devAttrBeans[ai].devAttr) {
-			return &devBean->devAttrBeans[ai];
-		}
-		ai++;
-	}
-	return NULL;
+	return dab->gpio;
 }
 
-static ssize_t devAttrGpio_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	int val;
-	struct DeviceAttrBean* dab;
-	dab = devAttrGetBean(devGetBean(dev), attr);
-	if (dab == NULL || dab->gpio < 0) {
-		return -EFAULT;
-	}
-	if (dab->gpioMode != GPIO_MODE_IN && dab->gpioMode != GPIO_MODE_OUT) {
-		return -EPERM;
-	}
-	val = gpio_get_value(dab->gpio);
-	if (dab->invert) {
-		val = val == 0 ? 1 : 0;
-	}
-	return sprintf(buf, "%d\n", val);
+struct WiegandBean* wiegandGetBean(struct device *dev,
+		struct device_attribute *attr) {
+	return &w;
 }
 
-static ssize_t devAttrGpio_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
-	bool val;
-	struct DeviceAttrBean* dab;
-	dab = devAttrGetBean(devGetBean(dev), attr);
-	if (dab == NULL || dab->gpio < 0) {
-		return -EFAULT;
-	}
-	if (dab->gpioMode != GPIO_MODE_OUT) {
-		return -EPERM;
-	}
-	if (kstrtobool(buf, &val) < 0) {
-		if (toUpper(buf[0]) == 'E') { // Enable
-			val = true;
-		} else if (toUpper(buf[0]) == 'D') { // Disable
-			val = false;
-		} else if (toUpper(buf[0]) == 'F' || toUpper(buf[0]) == 'T') { // Flip/Toggle
-			val = gpio_get_value(dab->gpio) ==
-					(dab->invert ? 0 : 1) ? false : true;
-		} else {
-			return -EINVAL;
-		}
-	}
-	if (dab->invert) {
-		val = !val;
-	}
-	gpio_set_value(dab->gpio, val ? 1 : 0);
-	return count;
-}
-
-static ssize_t devAttrPirOnCounter_show(struct device* dev,
-		struct device_attribute* attr, char *buf){
-	return sprintf(buf, "%lu\n", pir.onStateCnt);
-}
-
-static ssize_t devAttrPirOnCounter_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
+static ssize_t devAttrPirOnCounter_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
 	unsigned long val;
 
 	int ret = kstrtoul(buf, 10, &val);
 	if (ret < 0) {
 		return ret;
 	}
-
 	if (val != 0) {
 		return -EINVAL;
 	}
 
-	pir.onStateCnt = ret;
+	gpioPir.onCnt = 0;
+
 	return count;
-}
-
-static ssize_t devAttrGpioDeb_show(struct device *dev,
-		struct device_attribute *attr, char *buf) {
-	struct timespec64 now;
-	unsigned long long diff;
-	int actualGPIOStatus;
-	struct DeviceAttrBean *dab;
-	int res;
-
-	ktime_get_raw_ts64(&now);
-	dab = container_of(attr, struct DeviceAttrBean, devAttr);
-	diff = diff_usec((struct timespec64*) &dab->debBean->lastDebIrqTs,
-			&now);
-	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
-	if (actualGPIOStatus) {
-		if (diff >= dab->debBean->debOnMinTime_usec) {
-			res = actualGPIOStatus;
-		} else {
-			res = dab->debBean->debValue;
-		}
-	} else {
-		if (diff >= dab->debBean->debOffMinTime_usec) {
-			res = actualGPIOStatus;
-		} else {
-			res = dab->debBean->debValue;
-		}
-	}
-	return sprintf(buf, "%d\n", res);
-}
-
-static ssize_t devAttrGpioDebMsOn_show(struct device *dev,
-		struct device_attribute *attr, char *buf) {
-	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
-
-	return sprintf(buf, "%lu\n",
-			dab->debBean->debOnMinTime_usec / 1000);
-}
-
-static ssize_t devAttrGpioDebMsOff_show(struct device *dev,
-		struct device_attribute *attr, char *buf) {
-	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
-
-	return sprintf(buf, "%lu\n",
-			dab->debBean->debOffMinTime_usec / 1000);
-}
-
-static ssize_t devAttrGpioDebMsOn_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count) {
-	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
-	unsigned int val;
-
-	int ret = kstrtouint(buf, 10, &val);
-	if (ret < 0) {
-		return ret;
-	}
-	dab->debBean->debOnMinTime_usec = val * 1000;
-	dab->debBean->debOnStateCnt = 0;
-	dab->debBean->debOffStateCnt = 0;
-
-	dab->debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
-	return count;
-}
-
-static ssize_t devAttrGpioDebMsOff_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count) {
-	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
-	unsigned int val;
-
-	int ret = kstrtouint(buf, 10, &val);
-	if (ret < 0) {
-		return ret;
-	}
-	dab->debBean->debOffMinTime_usec = val * 1000;
-	dab->debBean->debOnStateCnt = 0;
-	dab->debBean->debOffStateCnt = 0;
-
-	dab->debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
-	return count;
-}
-
-static ssize_t devAttrGpioDebOnCnt_show(struct device *dev,
-		struct device_attribute *attr, char *buf) {
-	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
-	struct timespec64 now;
-	unsigned long long diff;
-	int actualGPIOStatus;
-	unsigned long res;
-
-	ktime_get_raw_ts64(&now);
-	diff = diff_usec(
-			(struct timespec64*) &dab->debBean->lastDebIrqTs, &now);
-
-	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
-	if (dab->debBean->debPastValue == actualGPIOStatus
-			&& actualGPIOStatus
-			&& diff >= dab->debBean->debOnMinTime_usec
-			&& actualGPIOStatus != dab->debBean->debValue) {
-		res = dab->debBean->debOnStateCnt + 1;
-	}else{
-		res = dab->debBean->debOnStateCnt;
-	}
-
-	return sprintf(buf, "%lu\n", res);
-}
-
-static ssize_t devAttrGpioDebOffCnt_show(struct device *dev,
-		struct device_attribute *attr, char *buf) {
-	struct DeviceAttrBean* dab = container_of(attr, struct DeviceAttrBean, devAttr);
-	struct timespec64 now;
-	unsigned long long diff;
-	int actualGPIOStatus;
-	unsigned long res;
-
-	ktime_get_raw_ts64(&now);
-	diff = diff_usec(
-			(struct timespec64*) &dab->debBean->lastDebIrqTs, &now);
-
-	actualGPIOStatus = gpio_get_value(dab->debBean->gpio);
-	if (dab->debBean->debPastValue == actualGPIOStatus
-			&& !actualGPIOStatus
-			&& diff >= dab->debBean->debOffMinTime_usec
-			&& actualGPIOStatus != dab->debBean->debValue) {
-		res = dab->debBean->debOffStateCnt + 1;
-	}else{
-		res = dab->debBean->debOffStateCnt;
-	}
-
-	return sprintf(buf, "%lu\n", res);
-}
-
-static ssize_t devAttrGpioBlink_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
-	int i;
-	struct DeviceAttrBean* dab;
-	long on = 0;
-	long off = 0;
-	long rep = 1;
-	char *end = NULL;
-	dab = devAttrGetBean(devGetBean(dev), attr);
-	if (dab == NULL || dab->gpioMode == 0) {
-		return -EFAULT;
-	}
-	if (dab->gpio < 0) {
-		return -EFAULT;
-	}
-	on = simple_strtol(buf, &end, 10);
-	if (++end < buf + count) {
-		off = simple_strtol(end, &end, 10);
-		if (++end < buf + count) {
-			rep = simple_strtol(end, NULL, 10);
-		}
-	}
-	if (rep < 1) {
-		rep = 1;
-	}
-	if (on > 0) {
-		for (i = 0; i < rep; i++) {
-			gpio_set_value(dab->gpio, dab->invert ? 0 : 1);
-			msleep(on);
-			gpio_set_value(dab->gpio, dab->invert ? 1 : 0);
-			if (i < rep - 1) {
-				msleep(off);
-			}
-		}
-	}
-	return count;
-}
-
-static ssize_t devAttrTtlMode_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	struct DeviceAttrBean* dab;
-	dab = devAttrGetBean(devGetBean(dev), attr);
-	if (dab == NULL || dab->gpio < 0) {
-		return -EFAULT;
-	}
-	if (dab->gpioMode == GPIO_MODE_IN) {
-		return sprintf(buf, "in\n");
-	}
-	if (dab->gpioMode == GPIO_MODE_OUT) {
-		return sprintf(buf, "out\n");
-	}
-	return sprintf(buf, "x\n");
-}
-
-static ssize_t devAttrTtlMode_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
-	size_t ret;
-	int ai;
-	bool* enabled;
-	struct DeviceBean* db;
-	struct DeviceAttrBean* dab;
-	db = devGetBean(dev);
-	dab = devAttrGetBean(db, attr);
-	if (dab == NULL) {
-		return -EFAULT;
-	}
-
-	if (w1.enabled) {
-		return -EBUSY;
-	}
-
-	if (dab->gpio == GPIO_TTL1) {
-		enabled = &ttl1enabled;
-	} else if (dab->gpio == GPIO_TTL2) {
-		enabled = &ttl2enabled;
-	} else {
-		return -EFAULT;
-	}
-
-	if (toUpper(buf[0]) == 'I') {
-		dab->gpioMode = GPIO_MODE_IN;
-	} else if (toUpper(buf[0]) == 'O') {
-		dab->gpioMode = GPIO_MODE_OUT;
-	} else {
-		dab->gpioMode = 0;
-	}
-
-	ret = count;
-	gpio_free(dab->gpio);
-	if (dab->gpioMode != 0) {
-		(*enabled) = true;
-		if (gpioSetup(db, dab)) {
-			dab->gpioMode = 0;
-			gpio_free(dab->gpio);
-			ret = -EFAULT;
-		}
-	} else {
-		(*enabled) = false;
-	}
-
-	ai = 0;
-	while (db->devAttrBeans[ai].devAttr.attr.name != NULL) {
-		if (db->devAttrBeans[ai].gpio == dab->gpio) {
-			db->devAttrBeans[ai].gpioMode = dab->gpioMode;
-		}
-		ai++;
-	}
-
-	return ret;
 }
 
 static bool exosensepi_i2c_lock(void) {
@@ -1598,7 +1141,7 @@ static void exosensepi_i2c_unlock(void) {
 	mutex_unlock(&exosensepi_i2c_mutex);
 }
 
-struct i2c_client *sensirion_i2c_client_get(uint8_t address) {
+struct i2c_client* sensirion_i2c_client_get(uint8_t address) {
 	if (sht40_i2c_client != NULL && sht40_i2c_client->addr == address) {
 		return sht40_i2c_client;
 	}
@@ -1619,7 +1162,7 @@ struct i2c_client *sensirion_i2c_client_get(uint8_t address) {
  * @param count   number of bytes to read from the buffer and send over I2C
  * @returns 0 on success, error code otherwise
  */
-int8_t sensirion_i2c_write(uint8_t address, const uint8_t* data,
+int8_t sensirion_i2c_write(uint8_t address, const uint8_t *data,
 		uint16_t count) {
 	struct i2c_client *client;
 
@@ -1643,7 +1186,7 @@ int8_t sensirion_i2c_write(uint8_t address, const uint8_t* data,
  * @param count   number of bytes to read from I2C and store in the buffer
  * @returns 0 on success, error code otherwise
  */
-int8_t sensirion_i2c_read(uint8_t address, uint8_t* data, uint16_t count) {
+int8_t sensirion_i2c_read(uint8_t address, uint8_t *data, uint16_t count) {
 	struct i2c_client *client;
 
 	client = sensirion_i2c_client_get(address);
@@ -1680,17 +1223,17 @@ static int16_t lm75aRead(struct i2c_client *client, int32_t *temp) {
 	}
 
 	*temp = ((*temp & 0xff) << 8) + ((*temp >> 8) & 0xe0);
-	*temp = ((int16_t) *temp) * 100 / 256;
+	*temp = ((int16_t) * temp) * 100 / 256;
 
 	return 0;
 }
 
 static int32_t cmpint32(const void *a, const void *b) {
-	return *(int32_t *)a - *(int32_t *)b;
+	return *(int32_t*) a - *(int32_t*) b;
 }
 
-static int16_t thaReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
-		int32_t* tCal, int32_t* rhCal, uint16_t* sraw, int32_t* voc_index) {
+static int16_t thaReadCalibrate(int32_t *t, int32_t *rh, int32_t *dt,
+		int32_t *tCal, int32_t *rhCal, uint16_t *sraw, int32_t *voc_index) {
 	int rhIdx, i;
 	int16_t ret;
 	int32_t t9, t16, tOff;
@@ -1734,7 +1277,8 @@ static int16_t thaReadCalibrate(int32_t* t, int32_t* rh, int32_t* dt,
 	for (i = 0; i < THA_DT_MEDIAN_SAMPLES; i++) {
 		tha_dt_median_sort[i] = tha_dt_median_buff[i];
 	}
-	sort(tha_dt_median_sort, THA_DT_MEDIAN_SAMPLES, sizeof(int32_t), &cmpint32, NULL);
+	sort(tha_dt_median_sort, THA_DT_MEDIAN_SAMPLES, sizeof(int32_t), &cmpint32,
+			NULL);
 
 	*dt = tha_dt_median_sort[THA_DT_MEDIAN_SAMPLES / 2];
 
@@ -1809,8 +1353,8 @@ int thaThreadFunction(void *data) {
 	return 0;
 }
 
-static ssize_t devAttrThaTh_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
+static ssize_t devAttrThaTh_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	if (!tha_ready) {
 		return -EBUSY;
 	}
@@ -1819,8 +1363,8 @@ static ssize_t devAttrThaTh_show(struct device* dev,
 			tha_rhCal);
 }
 
-static ssize_t devAttrThaThv_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
+static ssize_t devAttrThaThv_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	if (!tha_ready) {
 		return -EBUSY;
 	}
@@ -1829,13 +1373,13 @@ static ssize_t devAttrThaThv_show(struct device* dev,
 			tha_rh, tha_rhCal, tha_sraw, tha_voc_index);
 }
 
-static ssize_t devAttrThaTempOffset_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
+static ssize_t devAttrThaTempOffset_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	return sprintf(buf, "%d\n", tha_temp_offset);
 }
 
-static ssize_t devAttrThaTempOffset_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
+static ssize_t devAttrThaTempOffset_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
 	int ret;
 	long val;
 
@@ -1849,20 +1393,20 @@ static ssize_t devAttrThaTempOffset_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrLm75aU9_show(struct device* dev,
-		struct device_attribute* attr,
+static ssize_t devAttrLm75aU9_show(struct device *dev,
+		struct device_attribute *attr,
 		char *buf) {
 	return devAttrLm75a_show(lm75aU9_i2c_client, dev, attr, buf);
 }
 
-static ssize_t devAttrLm75aU16_show(struct device* dev,
-		struct device_attribute* attr,
+static ssize_t devAttrLm75aU16_show(struct device *dev,
+		struct device_attribute *attr,
 		char *buf) {
 	return devAttrLm75a_show(lm75aU16_i2c_client, dev, attr, buf);
 }
 
-static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
-		struct device_attribute* attr, char *buf) {
+static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	int16_t res;
 	int32_t temp;
 
@@ -1881,8 +1425,7 @@ static ssize_t devAttrLm75a_show(struct i2c_client *client, struct device* dev,
 	return sprintf(buf, "%d\n", temp);
 }
 
-static ssize_t opt3001_show(struct device* dev,
-		struct device_attribute* attr,
+static ssize_t opt3001_show(struct device *dev, struct device_attribute *attr,
 		char *buf) {
 	int32_t res;
 	int16_t man, exp;
@@ -1910,66 +1453,70 @@ static ssize_t opt3001_show(struct device* dev,
 	return sprintf(buf, "%d\n", res);
 }
 
-static ssize_t devAttrSndEvalPeriodLEQ_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
-	return sprintf(buf, "%llu %ld\n", soundEval.period_res.time_epoch_millisec, soundEval.period_res.l_EQ);
+static ssize_t devAttrSndEvalPeriodLEQ_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
+	return sprintf(buf, "%llu %ld\n", soundEval.period_res.time_epoch_millisec,
+			soundEval.period_res.l_EQ);
 }
 
-static ssize_t devAttrSndEvalPeriodLEQ_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
-	int res = sscanf(buf, "%llu %ld", &soundEval.period_res.time_epoch_millisec, &soundEval.period_res.l_EQ);
+static ssize_t devAttrSndEvalPeriodLEQ_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
+	int res = sscanf(buf, "%llu %ld", &soundEval.period_res.time_epoch_millisec,
+			&soundEval.period_res.l_EQ);
 	if (res != 2) {
 		return -EINVAL;
 	}
 	return count;
 }
 
-static ssize_t devAttrSndEvalIntervalLEQ_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
-	return sprintf(buf, "%llu %ld\n", soundEval.interval_res.time_epoch_millisec, soundEval.interval_res.l_EQ);
+static ssize_t devAttrSndEvalIntervalLEQ_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
+	return sprintf(buf, "%llu %ld\n",
+			soundEval.interval_res.time_epoch_millisec,
+			soundEval.interval_res.l_EQ);
 }
 
-static ssize_t devAttrSndEvalIntervalLEQ_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
-	int res = sscanf(buf, "%llu %ld", &soundEval.interval_res.time_epoch_millisec, &soundEval.interval_res.l_EQ);
+static ssize_t devAttrSndEvalIntervalLEQ_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
+	int res = sscanf(buf, "%llu %ld",
+			&soundEval.interval_res.time_epoch_millisec,
+			&soundEval.interval_res.l_EQ);
 	if (res != 2) {
 		return -EINVAL;
 	}
 	return count;
 }
 
-static ssize_t devAttrSndEvalTimeWeight_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
-
+static ssize_t devAttrSndEvalTimeWeight_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	char val;
 
 	switch (soundEval.setting_time_weight)
-	        {
-	        case FAST_WEIGHTING:
-	        	val = fast_weight_char;
-				break;
-	        case SLOW_WEIGHTING:
-	        	val = slow_weight_char;
-				break;
-	        case IMPULSE_WEIGHTING:
-	        	val = impulse_weight_char;
-	        	break;
-	        default:
-	        	soundEval.setting_time_weight = FAST_WEIGHTING;
-	        	val = fast_weight_char;
-	            break;
-	        }
+	{
+	case FAST_WEIGHTING:
+		val = fast_weight_char;
+		break;
+	case SLOW_WEIGHTING:
+		val = slow_weight_char;
+		break;
+	case IMPULSE_WEIGHTING:
+		val = impulse_weight_char;
+		break;
+	default:
+		soundEval.setting_time_weight = FAST_WEIGHTING;
+		val = fast_weight_char;
+		break;
+	}
 
 	return sprintf(buf, "%c\n", val);
 }
 
-static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
-
+static ssize_t devAttrSndEvalTimeWeight_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
 	unsigned int ret = soundEval.setting_time_weight;
-	if (toUpper(buf[0]) == fast_weight_char){
+	if (toUpper(buf[0]) == fast_weight_char) {
 		ret = FAST_WEIGHTING;
-	} else if (toUpper(buf[0]) == slow_weight_char){
+	} else if (toUpper(buf[0]) == slow_weight_char) {
 		ret = SLOW_WEIGHTING;
 	} else if (toUpper(buf[0]) == impulse_weight_char) {
 		ret = IMPULSE_WEIGHTING;
@@ -1982,7 +1529,7 @@ static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 		soundEval.setting_time_weight = ret;
 
 		int error = write_settings_to_proc_buffer();
-		if (error != 0){
+		if (error != 0) {
 			soundEval.setting_time_weight = pre;
 			return error;
 		}
@@ -1991,33 +1538,32 @@ static ssize_t devAttrSndEvalTimeWeight_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrSndEvalFreqWeight_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
+static ssize_t devAttrSndEvalFreqWeight_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	char val;
 
 	switch (soundEval.setting_freq_weight)
-	        {
-	        case A_WEIGHTING:
-	        	val = a_weight_char;
-				break;
-	        case Z_WEIGHTING:
-	        	val = z_weight_char;
-				break;
-	        case C_WEIGHTING:
-	        	val = c_weight_char;
-	        	break;
-	        default:
-	        	soundEval.setting_freq_weight = A_WEIGHTING;
-	        	val = a_weight_char;
-	            break;
-	        }
+	{
+	case A_WEIGHTING:
+		val = a_weight_char;
+		break;
+	case Z_WEIGHTING:
+		val = z_weight_char;
+		break;
+	case C_WEIGHTING:
+		val = c_weight_char;
+		break;
+	default:
+		soundEval.setting_freq_weight = A_WEIGHTING;
+		val = a_weight_char;
+		break;
+	}
 
 	return sprintf(buf, "%c\n", val);
 }
 
-static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
-
+static ssize_t devAttrSndEvalFreqWeight_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
 	unsigned int ret = soundEval.setting_freq_weight;
 	if (toUpper(buf[0]) == a_weight_char) {
 		ret = A_WEIGHTING;
@@ -2034,7 +1580,7 @@ static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 		soundEval.setting_freq_weight = ret;
 
 		int error = write_settings_to_proc_buffer();
-		if (error != 0){
+		if (error != 0) {
 			soundEval.setting_freq_weight = pre;
 			return error;
 		}
@@ -2043,13 +1589,13 @@ static ssize_t devAttrSndEvalFreqWeight_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrSndEvalIntervalSec_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
+static ssize_t devAttrSndEvalIntervalSec_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	return sprintf(buf, "%lu\n", soundEval.setting_interval);
 }
 
-static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
+static ssize_t devAttrSndEvalIntervalSec_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
 	int ret;
 	long val;
 
@@ -2058,12 +1604,12 @@ static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
 		return ret;
 	}
 
-	if (val != soundEval.setting_interval){
+	if (val != soundEval.setting_interval) {
 		long pre = soundEval.setting_interval;
 		soundEval.setting_interval = val;
 
 		int error = write_settings_to_proc_buffer();
-		if (error != 0){
+		if (error != 0) {
 			soundEval.setting_interval = pre;
 			return error;
 		}
@@ -2072,13 +1618,13 @@ static ssize_t devAttrSndEvalIntervalSec_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrSndEvalEnableUtility_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
+static ssize_t devAttrSndEvalEnableUtility_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	return sprintf(buf, "%d\n", soundEval.setting_enable_utility);
 }
 
-static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
+static ssize_t devAttrSndEvalEnableUtility_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
 	int ret;
 	unsigned int val;
 
@@ -2091,12 +1637,12 @@ static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 		return -EINVAL;
 	}
 
-	if (val != soundEval.setting_enable_utility){
+	if (val != soundEval.setting_enable_utility) {
 		unsigned int pre = soundEval.setting_enable_utility;
 		soundEval.setting_enable_utility = val;
 
 		int error = write_settings_to_proc_buffer();
-		if (error != 0){
+		if (error != 0) {
 			soundEval.setting_enable_utility = pre;
 			return error;
 		}
@@ -2105,89 +1651,138 @@ static ssize_t devAttrSndEvalEnableUtility_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
+static ssize_t devAttrSndEvalPeriodBandsLEQ_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	char res[256];
 
-	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE){
+	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE) {
 		sprintf(res, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					 "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					 "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					 "%ld %ld %ld %ld %ld %ld",
-					 soundEval.period_bands_res.l_EQ[0], soundEval.period_bands_res.l_EQ[1],
-					 soundEval.period_bands_res.l_EQ[2], soundEval.period_bands_res.l_EQ[3],
-					 soundEval.period_bands_res.l_EQ[4], soundEval.period_bands_res.l_EQ[5],
-					 soundEval.period_bands_res.l_EQ[6], soundEval.period_bands_res.l_EQ[7],
-					 soundEval.period_bands_res.l_EQ[8], soundEval.period_bands_res.l_EQ[9],
-					 soundEval.period_bands_res.l_EQ[10], soundEval.period_bands_res.l_EQ[11],
-					 soundEval.period_bands_res.l_EQ[12], soundEval.period_bands_res.l_EQ[13],
-					 soundEval.period_bands_res.l_EQ[14], soundEval.period_bands_res.l_EQ[15],
-					 soundEval.period_bands_res.l_EQ[16], soundEval.period_bands_res.l_EQ[17],
-					 soundEval.period_bands_res.l_EQ[18], soundEval.period_bands_res.l_EQ[19],
-					 soundEval.period_bands_res.l_EQ[20], soundEval.period_bands_res.l_EQ[21],
-					 soundEval.period_bands_res.l_EQ[22], soundEval.period_bands_res.l_EQ[23],
-					 soundEval.period_bands_res.l_EQ[24], soundEval.period_bands_res.l_EQ[25],
-					 soundEval.period_bands_res.l_EQ[26], soundEval.period_bands_res.l_EQ[27],
-					 soundEval.period_bands_res.l_EQ[28], soundEval.period_bands_res.l_EQ[29],
-					 soundEval.period_bands_res.l_EQ[30], soundEval.period_bands_res.l_EQ[31],
-					 soundEval.period_bands_res.l_EQ[32], soundEval.period_bands_res.l_EQ[33],
-					 soundEval.period_bands_res.l_EQ[34], soundEval.period_bands_res.l_EQ[35]);
-	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE){
+				"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+				"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+				"%ld %ld %ld %ld %ld %ld",
+				soundEval.period_bands_res.l_EQ[0],
+				soundEval.period_bands_res.l_EQ[1],
+				soundEval.period_bands_res.l_EQ[2],
+				soundEval.period_bands_res.l_EQ[3],
+				soundEval.period_bands_res.l_EQ[4],
+				soundEval.period_bands_res.l_EQ[5],
+				soundEval.period_bands_res.l_EQ[6],
+				soundEval.period_bands_res.l_EQ[7],
+				soundEval.period_bands_res.l_EQ[8],
+				soundEval.period_bands_res.l_EQ[9],
+				soundEval.period_bands_res.l_EQ[10],
+				soundEval.period_bands_res.l_EQ[11],
+				soundEval.period_bands_res.l_EQ[12],
+				soundEval.period_bands_res.l_EQ[13],
+				soundEval.period_bands_res.l_EQ[14],
+				soundEval.period_bands_res.l_EQ[15],
+				soundEval.period_bands_res.l_EQ[16],
+				soundEval.period_bands_res.l_EQ[17],
+				soundEval.period_bands_res.l_EQ[18],
+				soundEval.period_bands_res.l_EQ[19],
+				soundEval.period_bands_res.l_EQ[20],
+				soundEval.period_bands_res.l_EQ[21],
+				soundEval.period_bands_res.l_EQ[22],
+				soundEval.period_bands_res.l_EQ[23],
+				soundEval.period_bands_res.l_EQ[24],
+				soundEval.period_bands_res.l_EQ[25],
+				soundEval.period_bands_res.l_EQ[26],
+				soundEval.period_bands_res.l_EQ[27],
+				soundEval.period_bands_res.l_EQ[28],
+				soundEval.period_bands_res.l_EQ[29],
+				soundEval.period_bands_res.l_EQ[30],
+				soundEval.period_bands_res.l_EQ[31],
+				soundEval.period_bands_res.l_EQ[32],
+				soundEval.period_bands_res.l_EQ[33],
+				soundEval.period_bands_res.l_EQ[34],
+				soundEval.period_bands_res.l_EQ[35]);
+	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE) {
 		sprintf(res, "%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					 "%ld %ld",
-					 soundEval.period_bands_res.l_EQ[0], soundEval.period_bands_res.l_EQ[1],
-					 soundEval.period_bands_res.l_EQ[2], soundEval.period_bands_res.l_EQ[3],
-					 soundEval.period_bands_res.l_EQ[4], soundEval.period_bands_res.l_EQ[5],
-					 soundEval.period_bands_res.l_EQ[6], soundEval.period_bands_res.l_EQ[7],
-					 soundEval.period_bands_res.l_EQ[8], soundEval.period_bands_res.l_EQ[9],
-					 soundEval.period_bands_res.l_EQ[10], soundEval.period_bands_res.l_EQ[11]);
+				"%ld %ld",
+				soundEval.period_bands_res.l_EQ[0],
+				soundEval.period_bands_res.l_EQ[1],
+				soundEval.period_bands_res.l_EQ[2],
+				soundEval.period_bands_res.l_EQ[3],
+				soundEval.period_bands_res.l_EQ[4],
+				soundEval.period_bands_res.l_EQ[5],
+				soundEval.period_bands_res.l_EQ[6],
+				soundEval.period_bands_res.l_EQ[7],
+				soundEval.period_bands_res.l_EQ[8],
+				soundEval.period_bands_res.l_EQ[9],
+				soundEval.period_bands_res.l_EQ[10],
+				soundEval.period_bands_res.l_EQ[11]);
 	}
-	return sprintf(buf, "%llu %s\n", soundEval.period_bands_res.time_epoch_millisec, res);
+	return sprintf(buf, "%llu %s\n",
+			soundEval.period_bands_res.time_epoch_millisec, res);
 
 }
 
-static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
+static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
 	int res;
-	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE){
+	if (soundEval.setting_freq_bands_type == ONE_THIRD_OCTAVE) {
 		res = sscanf(buf, "%llu "
-					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					"%ld %ld %ld %ld %ld %ld",
-					&soundEval.period_bands_res.time_epoch_millisec,
-					&soundEval.period_bands_res.l_EQ[0], &soundEval.period_bands_res.l_EQ[1],
-					&soundEval.period_bands_res.l_EQ[2], &soundEval.period_bands_res.l_EQ[3],
-					&soundEval.period_bands_res.l_EQ[4], &soundEval.period_bands_res.l_EQ[5],
-					&soundEval.period_bands_res.l_EQ[6], &soundEval.period_bands_res.l_EQ[7],
-					&soundEval.period_bands_res.l_EQ[8], &soundEval.period_bands_res.l_EQ[9],
-					&soundEval.period_bands_res.l_EQ[10], &soundEval.period_bands_res.l_EQ[11],
-					&soundEval.period_bands_res.l_EQ[12], &soundEval.period_bands_res.l_EQ[13],
-					&soundEval.period_bands_res.l_EQ[14], &soundEval.period_bands_res.l_EQ[15],
-					&soundEval.period_bands_res.l_EQ[16], &soundEval.period_bands_res.l_EQ[17],
-					&soundEval.period_bands_res.l_EQ[18], &soundEval.period_bands_res.l_EQ[19],
-					&soundEval.period_bands_res.l_EQ[20], &soundEval.period_bands_res.l_EQ[21],
-					&soundEval.period_bands_res.l_EQ[22], &soundEval.period_bands_res.l_EQ[23],
-					&soundEval.period_bands_res.l_EQ[24], &soundEval.period_bands_res.l_EQ[25],
-					&soundEval.period_bands_res.l_EQ[26], &soundEval.period_bands_res.l_EQ[27],
-					&soundEval.period_bands_res.l_EQ[28], &soundEval.period_bands_res.l_EQ[29],
-					&soundEval.period_bands_res.l_EQ[30], &soundEval.period_bands_res.l_EQ[31],
-					&soundEval.period_bands_res.l_EQ[32], &soundEval.period_bands_res.l_EQ[33],
-					&soundEval.period_bands_res.l_EQ[34], &soundEval.period_bands_res.l_EQ[35]);
+				"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+				"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+				"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+				"%ld %ld %ld %ld %ld %ld",
+				&soundEval.period_bands_res.time_epoch_millisec,
+				&soundEval.period_bands_res.l_EQ[0],
+				&soundEval.period_bands_res.l_EQ[1],
+				&soundEval.period_bands_res.l_EQ[2],
+				&soundEval.period_bands_res.l_EQ[3],
+				&soundEval.period_bands_res.l_EQ[4],
+				&soundEval.period_bands_res.l_EQ[5],
+				&soundEval.period_bands_res.l_EQ[6],
+				&soundEval.period_bands_res.l_EQ[7],
+				&soundEval.period_bands_res.l_EQ[8],
+				&soundEval.period_bands_res.l_EQ[9],
+				&soundEval.period_bands_res.l_EQ[10],
+				&soundEval.period_bands_res.l_EQ[11],
+				&soundEval.period_bands_res.l_EQ[12],
+				&soundEval.period_bands_res.l_EQ[13],
+				&soundEval.period_bands_res.l_EQ[14],
+				&soundEval.period_bands_res.l_EQ[15],
+				&soundEval.period_bands_res.l_EQ[16],
+				&soundEval.period_bands_res.l_EQ[17],
+				&soundEval.period_bands_res.l_EQ[18],
+				&soundEval.period_bands_res.l_EQ[19],
+				&soundEval.period_bands_res.l_EQ[20],
+				&soundEval.period_bands_res.l_EQ[21],
+				&soundEval.period_bands_res.l_EQ[22],
+				&soundEval.period_bands_res.l_EQ[23],
+				&soundEval.period_bands_res.l_EQ[24],
+				&soundEval.period_bands_res.l_EQ[25],
+				&soundEval.period_bands_res.l_EQ[26],
+				&soundEval.period_bands_res.l_EQ[27],
+				&soundEval.period_bands_res.l_EQ[28],
+				&soundEval.period_bands_res.l_EQ[29],
+				&soundEval.period_bands_res.l_EQ[30],
+				&soundEval.period_bands_res.l_EQ[31],
+				&soundEval.period_bands_res.l_EQ[32],
+				&soundEval.period_bands_res.l_EQ[33],
+				&soundEval.period_bands_res.l_EQ[34],
+				&soundEval.period_bands_res.l_EQ[35]);
 		if (res != 37) {
 			return -EINVAL;
 		}
-	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE){
+	} else if (soundEval.setting_freq_bands_type == ONE_OCTAVE) {
 		res = sscanf(buf, "%llu "
-					"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
-					"%ld %ld",
-					&soundEval.period_bands_res.time_epoch_millisec,
-					&soundEval.period_bands_res.l_EQ[0], &soundEval.period_bands_res.l_EQ[1],
-					&soundEval.period_bands_res.l_EQ[2], &soundEval.period_bands_res.l_EQ[3],
-					&soundEval.period_bands_res.l_EQ[4], &soundEval.period_bands_res.l_EQ[5],
-					&soundEval.period_bands_res.l_EQ[6], &soundEval.period_bands_res.l_EQ[7],
-					&soundEval.period_bands_res.l_EQ[8], &soundEval.period_bands_res.l_EQ[9],
-					&soundEval.period_bands_res.l_EQ[10], &soundEval.period_bands_res.l_EQ[11]);
+				"%ld %ld %ld %ld %ld %ld %ld %ld %ld %ld "
+				"%ld %ld",
+				&soundEval.period_bands_res.time_epoch_millisec,
+				&soundEval.period_bands_res.l_EQ[0],
+				&soundEval.period_bands_res.l_EQ[1],
+				&soundEval.period_bands_res.l_EQ[2],
+				&soundEval.period_bands_res.l_EQ[3],
+				&soundEval.period_bands_res.l_EQ[4],
+				&soundEval.period_bands_res.l_EQ[5],
+				&soundEval.period_bands_res.l_EQ[6],
+				&soundEval.period_bands_res.l_EQ[7],
+				&soundEval.period_bands_res.l_EQ[8],
+				&soundEval.period_bands_res.l_EQ[9],
+				&soundEval.period_bands_res.l_EQ[10],
+				&soundEval.period_bands_res.l_EQ[11]);
 		if (res != 13) {
 			return -EINVAL;
 		}
@@ -2195,30 +1790,29 @@ static ssize_t devAttrSndEvalPeriodBandsLEQ_store(struct device* dev,
 	return count;
 }
 
-static ssize_t devAttrSndEvalFreqBandsType_show(struct device* dev, struct device_attribute* attr,
-		char *buf){
+static ssize_t devAttrSndEvalFreqBandsType_show(struct device *dev,
+		struct device_attribute *attr, char *buf) {
 	char val;
 
 	switch (soundEval.setting_freq_bands_type)
-	        {
-	        case ONE_THIRD_OCTAVE:
-	        	val = one_third_octave_freq_band_char;
-				break;
-	        case ONE_OCTAVE:
-	        	val = one_octave_freq_band_char;
-				break;
-	        default:
-	        	soundEval.setting_freq_bands_type = ONE_THIRD_OCTAVE;
-	        	val = one_third_octave_freq_band_char;
-	            break;
-	        }
+	{
+	case ONE_THIRD_OCTAVE:
+		val = one_third_octave_freq_band_char;
+		break;
+	case ONE_OCTAVE:
+		val = one_octave_freq_band_char;
+		break;
+	default:
+		soundEval.setting_freq_bands_type = ONE_THIRD_OCTAVE;
+		val = one_third_octave_freq_band_char;
+		break;
+	}
 
 	return sprintf(buf, "%c\n", val);
 }
 
-static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count){
-
+static ssize_t devAttrSndEvalFreqBandsType_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count) {
 	unsigned int ret = soundEval.setting_freq_bands_type;
 	if (toUpper(buf[0]) == one_third_octave_freq_band_char) {
 		ret = ONE_THIRD_OCTAVE;
@@ -2233,370 +1827,13 @@ static ssize_t devAttrSndEvalFreqBandsType_store(struct device* dev,
 		soundEval.setting_freq_bands_type = ret;
 
 		int error = write_settings_to_proc_buffer();
-		if (error != 0){
+		if (error != 0) {
 			soundEval.setting_freq_bands_type = pre;
 			return error;
 		}
 	}
 
 	return count;
-}
-
-static ssize_t devAttrWiegandEnabled_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, w1.enabled ? "1\n" : "0\n");
-}
-
-static void wiegandReset(struct WiegandBean* w) {
-	w->enabled = true;
-	w->data = 0;
-	w->bitCount = 0;
-	w->activeLine = NULL;
-	w->d0.wasLow = false;
-	w->d1.wasLow = false;
-}
-
-static unsigned long long to_usec(struct timespec64 *t) {
-	return (t->tv_sec * 1000000) + (t->tv_nsec / 1000);
-}
-
-static unsigned long long diff_usec(struct timespec64 *t1, struct timespec64 *t2) {
-	struct timespec64 diff;
-	diff = timespec64_sub(*t2, *t1);
-	return to_usec(&diff);
-}
-
-static irq_handler_t wiegandDataIrqHandler(unsigned int irq, void *dev_id,
-		struct pt_regs *regs) {
-	bool isLow;
-	struct timespec64 now;
-	unsigned long long diff;
-	struct WiegandLine* l = NULL;
-
-	if (w1.enabled) {
-		if (irq == w1.d0.irq) {
-			l = &w1.d0;
-		} else if (irq == w1.d1.irq) {
-			l = &w1.d1;
-		}
-	}
-
-	if (l == NULL) {
-		return (irq_handler_t) IRQ_HANDLED;
-	}
-
-	isLow = gpio_get_value(l->gpio) == 0;
-
-	ktime_get_raw_ts64(&now);
-
-	if (l->wasLow == isLow) {
-		// got the interrupt but didn't change state. Maybe a fast pulse
-		if (w1.noise == 0) {
-			w1.noise = 10;
-		}
-		return (irq_handler_t) IRQ_HANDLED;
-	}
-
-	l->wasLow = isLow;
-
-	if (isLow) {
-		if (w1.bitCount != 0) {
-			diff = diff_usec((struct timespec64 *) &w1.lastBitTs, &now);
-
-			if (diff < w1.pulseIntervalMin_usec) {
-				// pulse too early
-				w1.noise = 11;
-				goto noise;
-			}
-
-			if (diff > w1.pulseIntervalMax_usec) {
-				w1.data = 0;
-				w1.bitCount = 0;
-			}
-		}
-
-		if (w1.activeLine != NULL) {
-			// there's movement on both lines
-			w1.noise = 12;
-			goto noise;
-		}
-
-		w1.activeLine = l;
-
-		w1.lastBitTs.tv_sec = now.tv_sec;
-		w1.lastBitTs.tv_nsec = now.tv_nsec;
-
-	} else {
-		if (w1.activeLine != l) {
-			// there's movement on both lines or previous noise
-			w1.noise = 13;
-			goto noise;
-		}
-
-		w1.activeLine = NULL;
-
-		if (w1.bitCount >= WIEGAND_MAX_BITS) {
-			return (irq_handler_t) IRQ_HANDLED;
-		}
-
-		diff = diff_usec((struct timespec64 *) &w1.lastBitTs, &now);
-		if (diff < w1.pulseWidthMin_usec) {
-			// pulse too short
-			w1.noise = 14;
-			goto noise;
-		}
-		if (diff > w1.pulseWidthMax_usec) {
-			// pulse too long
-			w1.noise = 15;
-			goto noise;
-		}
-
-		w1.data <<= 1;
-		if (l == &w1.d1) {
-			w1.data |= 1;
-		}
-		w1.bitCount++;
-	}
-
-	return (irq_handler_t) IRQ_HANDLED;
-
-	noise:
-	wiegandReset(&w1);
-	return (irq_handler_t) IRQ_HANDLED;
-}
-
-static void wiegandDisable(struct WiegandBean* w) {
-	if (w->enabled) {
-		gpio_free(w->d0.gpio);
-		gpio_free(w->d1.gpio);
-
-		if (w->d0.irqRequested) {
-			free_irq(w->d0.irq, NULL);
-			w->d0.irqRequested = false;
-		}
-
-		if (w->d1.irqRequested) {
-			free_irq(w->d1.irq, NULL);
-			w->d1.irqRequested = false;
-		}
-
-		w->enabled = false;
-	}
-}
-
-static ssize_t devAttrWiegandEnabled_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
-	bool enable;
-	int result = 0;
-	char reqName[] = "exosensepi_ttN";
-
-	if (buf[0] == '0') {
-		enable = false;
-	} else if (buf[0] == '1') {
-		enable = true;
-	} else {
-		return -EINVAL;
-	}
-
-	if (enable && !w1.enabled) {
-		if (ttl1enabled || ttl2enabled) {
-			return -EBUSY;
-		}
-
-		reqName[13] = '0';
-		gpio_request(w1.d0.gpio, reqName);
-		reqName[13] = '1';
-		gpio_request(w1.d1.gpio, reqName);
-
-		result = gpio_direction_input(w1.d0.gpio);
-		if (!result) {
-			result = gpio_direction_input(w1.d1.gpio);
-		}
-
-		if (result) {
-			printk(
-			KERN_ALERT "exosensepi: * | error setting up wiegand GPIOs\n");
-			enable = false;
-		} else {
-			gpio_set_debounce(w1.d0.gpio, 0);
-			gpio_set_debounce(w1.d1.gpio, 0);
-
-			w1.d0.irq = gpio_to_irq(w1.d0.gpio);
-			w1.d1.irq = gpio_to_irq(w1.d1.gpio);
-
-			reqName[13] = '0';
-			result = request_irq(w1.d0.irq,
-					(irq_handler_t) wiegandDataIrqHandler,
-					IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
-					reqName, NULL);
-
-			if (result) {
-				printk(
-						KERN_ALERT "exosensepi: * | error registering wiegand D0 irq handler\n");
-				enable = false;
-			} else {
-				w1.d0.irqRequested = true;
-
-				reqName[13] = '1';
-				result = request_irq(w1.d1.irq,
-						(irq_handler_t) wiegandDataIrqHandler,
-						IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING,
-						reqName, NULL);
-
-				if (result) {
-					printk(
-							KERN_ALERT "exosensepi: * | error registering wiegand D1 irq handler\n");
-					enable = false;
-				} else {
-					w1.d1.irqRequested = true;
-				}
-			}
-		}
-	}
-
-	if (enable) {
-		w1.noise = 0;
-		wiegandReset(&w1);
-	} else {
-		wiegandDisable(&w1);
-	}
-
-	if (result) {
-		return result;
-	}
-	return count;
-}
-
-static ssize_t devAttrWiegandData_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	struct timespec64 now;
-	unsigned long long diff;
-
-	if (!w1.enabled) {
-		return -ENODEV;
-	}
-
-	ktime_get_raw_ts64(&now);
-	diff = diff_usec((struct timespec64 *) &w1.lastBitTs, &now);
-	if (diff <= w1.pulseIntervalMax_usec) {
-		return -EBUSY;
-	}
-
-	return sprintf(buf, "%llu %d %llu\n", to_usec(&w1.lastBitTs), w1.bitCount,
-			w1.data);
-}
-
-static ssize_t devAttrWiegandNoise_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	int noise;
-	noise = w1.noise;
-	w1.noise = 0;
-	return sprintf(buf, "%d\n", noise);
-}
-
-static ssize_t devAttrWiegandPulseIntervalMin_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, "%lu\n", w1.pulseIntervalMin_usec);
-}
-
-static ssize_t devAttrWiegandPulseIntervalMin_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
-	int ret;
-	unsigned long val;
-
-	ret = kstrtol(buf, 10, &val);
-	if (ret < 0) {
-		return ret;
-	}
-
-	w1.pulseIntervalMin_usec = val;
-
-	return count;
-}
-
-static ssize_t devAttrWiegandPulseIntervalMax_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, "%lu\n", w1.pulseIntervalMax_usec);
-}
-
-static ssize_t devAttrWiegandPulseIntervalMax_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
-	int ret;
-	unsigned long val;
-
-	ret = kstrtol(buf, 10, &val);
-	if (ret < 0) {
-		return ret;
-	}
-
-	w1.pulseIntervalMax_usec = val;
-
-	return count;
-}
-
-static ssize_t devAttrWiegandPulseWidthMin_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, "%lu\n", w1.pulseWidthMin_usec);
-}
-
-static ssize_t devAttrWiegandPulseWidthMin_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
-	int ret;
-	unsigned long val;
-
-	ret = kstrtol(buf, 10, &val);
-	if (ret < 0) {
-		return ret;
-	}
-
-	w1.pulseWidthMin_usec = val;
-
-	return count;
-}
-
-static ssize_t devAttrWiegandPulseWidthMax_show(struct device* dev,
-		struct device_attribute* attr, char *buf) {
-	return sprintf(buf, "%lu\n", w1.pulseWidthMax_usec);
-}
-
-static ssize_t devAttrWiegandPulseWidthMax_store(struct device* dev,
-		struct device_attribute* attr, const char *buf, size_t count) {
-	int ret;
-	unsigned long val;
-
-	ret = kstrtol(buf, 10, &val);
-	if (ret < 0) {
-		return ret;
-	}
-
-	w1.pulseWidthMax_usec = val;
-
-	return count;
-}
-
-void getCRC16LittleEndian(size_t length, const uint8_t *data, uint8_t *crc_le)
-{
-    size_t counter;
-    uint16_t crc_register = 0;
-    uint16_t polynom = 0x8005;
-    uint8_t shift_register;
-    uint8_t data_bit, crc_bit;
-
-    for (counter = 0; counter < length; counter++)
-    {
-        for (shift_register = 0x01; shift_register > 0x00; shift_register <<= 1)
-        {
-            data_bit = (data[counter] & shift_register) ? 1 : 0;
-            crc_bit = crc_register >> 15;
-            crc_register <<= 1;
-            if (data_bit != crc_bit)
-            {
-                crc_register ^= polynom;
-            }
-        }
-    }
-    crc_le[0] = (uint8_t)(crc_register & 0x00FF);
-    crc_le[1] = (uint8_t)(crc_register >> 8);
 }
 
 static int exosensepi_i2c_probe(struct i2c_client *client,
@@ -2637,13 +1874,13 @@ const struct of_device_id exosensepi_of_match[] = {
 	{ .compatible = "sferalabs,exosensepi", },
 	{ },
 };
-MODULE_DEVICE_TABLE(of, exosensepi_of_match);
+MODULE_DEVICE_TABLE( of, exosensepi_of_match);
 
 static const struct i2c_device_id exosensepi_i2c_id[] = {
 	{ "exosensepi", 0 },
 	{ },
 };
-MODULE_DEVICE_TABLE(i2c, exosensepi_i2c_id);
+MODULE_DEVICE_TABLE( i2c, exosensepi_i2c_id);
 
 static struct i2c_driver exosensepi_i2c_driver = {
 	.driver = {
@@ -2656,69 +1893,14 @@ static struct i2c_driver exosensepi_i2c_driver = {
 	.id_table = exosensepi_i2c_id,
 };
 
-static irqreturn_t gpio_deb_irq_handler(int irq, void *dev_id) {
-	struct timespec64 now;
-	int db = 0;
-	unsigned long long diff;
-	int actualGPIOStatus;
-
-	ktime_get_raw_ts64(&now);
-
-	while (debounceBeans[db].debIrqDevName != NULL) {
-		if (debounceBeans[db].debIrqNum == irq && debounceBeans[db].gpio != 0) {
-			actualGPIOStatus = gpio_get_value(debounceBeans[db].gpio);
-
-			diff = diff_usec(
-					(struct timespec64*) &debounceBeans[db].lastDebIrqTs, &now);
-
-			if (debounceBeans[db].debPastValue == actualGPIOStatus) {
-				return IRQ_HANDLED;
-			}
-
-			debounceBeans[db].debPastValue = actualGPIOStatus;
-
-			if (actualGPIOStatus == debounceBeans[db].debValue || debounceBeans[db].debValue == DEBOUNCE_STATE_NOT_DEFINED){
-				if (actualGPIOStatus) {
-					if (diff >= debounceBeans[db].debOffMinTime_usec) {
-						debounceBeans[db].debValue = 0;
-						debounceBeans[db].debOffStateCnt++;
-					}
-				} else {
-					if (diff >= debounceBeans[db].debOnMinTime_usec) {
-						debounceBeans[db].debValue = 1;
-						debounceBeans[db].debOnStateCnt++;
-					}
-				}
-			}
-
-			debounceBeans[db].lastDebIrqTs = now;
-			break;
-		}
-		db++;
-	}
-
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t gpio_pir_irq_handler(int irq, void *dev_id) {
-	if (pir.irqNum == irq) {
-		int actualGPIOStatus = gpio_get_value(pir.gpio);
-
-		if (pir.pastValue == actualGPIOStatus) {
-			return IRQ_HANDLED;
-		} else {
-			pir.pastValue = actualGPIOStatus;
-			if (actualGPIOStatus){
-				pir.onStateCnt++;
-			}
-		}
-	}
-
-	return IRQ_HANDLED;
-}
-
 static void cleanup(void) {
-	int di, ai;
+	struct DeviceBean *db;
+	struct DeviceAttrBean *dab;
+	int i, di, ai;
+
+	if (tha_thread) {
+		kthread_stop(tha_thread);
+	}
 
 	i2c_del_driver(&exosensepi_i2c_driver);
 	mutex_destroy(&exosensepi_i2c_mutex);
@@ -2726,19 +1908,11 @@ static void cleanup(void) {
 	di = 0;
 	while (devices[di].name != NULL) {
 		if (devices[di].pDevice && !IS_ERR(devices[di].pDevice)) {
+			db = &devices[di];
 			ai = 0;
-			while (devices[di].devAttrBeans[ai].devAttr.attr.name != NULL) {
-				device_remove_file(devices[di].pDevice,
-						&devices[di].devAttrBeans[ai].devAttr);
-				if (devices[di].devAttrBeans[ai].gpioMode != 0) {
-					gpio_free(devices[di].devAttrBeans[ai].gpio);
-				}
-				if (devices[di].devAttrBeans[ai].debBean != NULL) {
-					if (devices[di].devAttrBeans[ai].debBean->debIrqRequested) {
-						free_irq(devices[di].devAttrBeans[ai].debBean->debIrqNum, NULL);
-						devices[di].devAttrBeans[ai].debBean->debIrqRequested = false;
-					}
-				}
+			while (db->devAttrBeans[ai].devAttr.attr.name != NULL) {
+				dab = &db->devAttrBeans[ai];
+				device_remove_file(db->pDevice, &dab->devAttr);
 				ai++;
 			}
 		}
@@ -2746,15 +1920,11 @@ static void cleanup(void) {
 		di++;
 	}
 
-	if (pir.irqRequested) {
-		free_irq(pir.irqNum, NULL);
-	}
-
 	if (!IS_ERR(pDeviceClass)) {
 		class_destroy(pDeviceClass);
 	}
 
-	wiegandDisable(&w1);
+	wiegandDisable(&w);
 
 	if (proc_folder != NULL) {
 		if (proc_file != NULL) {
@@ -2763,22 +1933,60 @@ static void cleanup(void) {
 		remove_proc_entry(procfs_folder_name, NULL);
 	}
 
-	if (tha_thread) {
-		kthread_stop(tha_thread);
+	for (i = 0; i < DI_SIZE; i++) {
+		gpioFreeDebounce(&gpioDI[i]);
 	}
+	for (i = 0; i < TTL_SIZE; i++) {
+		gpioFree(&gpioTtl[i]);
+	}
+	gpioFree(&gpioLed);
+	gpioFree(&gpioBuzz);
+	gpioFree(&gpioDO1);
+	gpioFreeDebounce(&gpioPir);
 }
 
 static int __init exosensepi_init(void) {
-	int result = 0;
-	int di, ai;
+	struct DeviceBean *db;
+	struct DeviceAttrBean *dab;
+	int i, di, ai;
 
 	printk(KERN_INFO "exosensepi: - | init\n");
 
 	i2c_add_driver(&exosensepi_i2c_driver);
 	mutex_init(&exosensepi_i2c_mutex);
+
 	ateccAddDriver();
 
 	VocAlgorithm_init(&voc_algorithm_params);
+
+	for (i = 0; i < DI_SIZE; i++) {
+		if (gpioInitDebounce(&gpioDI[i])) {
+			pr_alert("exosensepi: * | error setting up GPIO %d\n",
+					gpioDI[i].gpio.gpio);
+			goto fail;
+		}
+	}
+	if (gpioInit(&gpioLed)) {
+		pr_alert("exosensepi: * | error setting up GPIO %d\n", gpioLed.gpio);
+		goto fail;
+	}
+	if (gpioInit(&gpioBuzz)) {
+		pr_alert("exosensepi: * | error setting up GPIO %d\n", gpioBuzz.gpio);
+		goto fail;
+	}
+	if (gpioInit(&gpioDO1)) {
+		pr_alert("exosensepi: * | error setting up GPIO %d\n", gpioDO1.gpio);
+		goto fail;
+	}
+	if (gpioInitDebounce(&gpioPir)) {
+		pr_alert("exosensepi: * | error setting up GPIO %d\n",
+				gpioPir.gpio.gpio);
+		goto fail;
+	}
+	gpioPir.onMinTime_usec = 0;
+	gpioPir.offMinTime_usec = 0;
+
+	wiegandInit(&w);
 
 	pDeviceClass = class_create(THIS_MODULE, "exosensepi");
 	if (IS_ERR(pDeviceClass)) {
@@ -2788,76 +1996,38 @@ static int __init exosensepi_init(void) {
 
 	di = 0;
 	while (devices[di].name != NULL) {
-		devices[di].pDevice = device_create(pDeviceClass, NULL, 0, NULL,
-				devices[di].name);
-		if (IS_ERR(devices[di].pDevice)) {
-			printk(KERN_ALERT "exosensepi: * | failed to create device '%s'\n",
-					devices[di].name);
+		db = &devices[di];
+		db->pDevice = device_create(pDeviceClass, NULL, 0, NULL, db->name);
+		if (IS_ERR(db->pDevice)) {
+			pr_alert("ionopi: * | failed to create device '%s'\n", db->name);
 			goto fail;
 		}
 
 		ai = 0;
-		while (devices[di].devAttrBeans[ai].devAttr.attr.name != NULL) {
-			result = device_create_file(devices[di].pDevice,
-					&devices[di].devAttrBeans[ai].devAttr);
-			if (result) {
-				printk(
-						KERN_ALERT "exosensepi: * | failed to create device file '%s/%s'\n",
-						devices[di].name,
-						devices[di].devAttrBeans[ai].devAttr.attr.name);
+		while (db->devAttrBeans[ai].devAttr.attr.name != NULL) {
+			dab = &db->devAttrBeans[ai];
+			if (device_create_file(db->pDevice, &dab->devAttr)) {
+				pr_alert("ionopi: * | failed to create device file '%s/%s'\n",
+						db->name, dab->devAttr.attr.name);
 				goto fail;
-			}
-			if (devices[di].devAttrBeans[ai].gpioMode != 0) {
-				result = gpioSetup(&devices[di], &devices[di].devAttrBeans[ai]);
-				if (result) {
-					printk(
-					KERN_ALERT "exosensepi: * | error setting up GPIO %d\n",
-							devices[di].devAttrBeans[ai].gpio);
-					goto fail;
-				}
-			}
-			if (devices[di].devAttrBeans[ai].debBean != NULL) {
-				if (!devices[di].devAttrBeans[ai].debBean->debIrqRequested) {
-					devices[di].devAttrBeans[ai].debBean->debIrqNum = gpio_to_irq(devices[di].devAttrBeans[ai].debBean->gpio);
-					if (request_irq(devices[di].devAttrBeans[ai].debBean->debIrqNum,
-									(void *) gpio_deb_irq_handler,
-									IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-									devices[di].devAttrBeans[ai].debBean->debIrqDevName,
-									NULL)) {
-						printk(KERN_ALERT "exosensepi: * | cannot register IRQ of %s in device %s\n", devices[di].devAttrBeans[ai].devAttr.attr.name, devices[di].name);
-						goto fail;
-					}
-					devices[di].devAttrBeans[ai].debBean->debIrqRequested = true;
-					ktime_get_raw_ts64(&devices[di].devAttrBeans[ai].debBean->lastDebIrqTs);
-					devices[di].devAttrBeans[ai].debBean->debValue = DEBOUNCE_STATE_NOT_DEFINED;
-					devices[di].devAttrBeans[ai].debBean->debPastValue = gpio_get_value(devices[di].devAttrBeans[ai].debBean->gpio);
-				}
 			}
 			ai++;
 		}
 		di++;
 	}
 
-	pir.irqRequested = false;
-	pir.irqNum = gpio_to_irq(pir.gpio);
-	if (request_irq(pir.irqNum,	(void *) gpio_pir_irq_handler, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,	pir.irqDevName,	NULL)) {
-		printk(KERN_ALERT "exosensepi: * | cannot register IRQ for PIR\n");
-		goto fail;
-	}
-	pir.irqRequested = true;
-	pir.pastValue = gpio_get_value(pir.gpio);
-
 	proc_folder = proc_mkdir(procfs_folder_name, NULL);
 	if (NULL == proc_folder) {
 		goto fail;
 	}
 
-	proc_file = proc_create(procfs_setting_file_name, 0444, proc_folder, &proc_fops);
+	proc_file = proc_create(procfs_setting_file_name, 0444, proc_folder,
+			&proc_fops);
 	if (NULL == proc_file) {
 		goto fail;
 	}
 
-	if (write_settings_to_proc_buffer() != 0){
+	if (write_settings_to_proc_buffer() != 0) {
 		goto fail;
 	}
 
@@ -2881,5 +2051,5 @@ static void __exit exosensepi_exit(void) {
 	printk(KERN_INFO "exosensepi: - | exit\n");
 }
 
-module_init(exosensepi_init);
-module_exit(exosensepi_exit);
+module_init( exosensepi_init);
+module_exit( exosensepi_exit);

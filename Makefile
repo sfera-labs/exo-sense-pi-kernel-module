@@ -1,6 +1,9 @@
 obj-m += exosensepi.o
  
 exosensepi-objs := module.o
+exosensepi-objs += commons/commons.o
+exosensepi-objs += gpio/gpio.o
+exosensepi-objs += wiegand/wiegand.o
 exosensepi-objs += sensirion/common/sensirion_common.o
 exosensepi-objs += sensirion/sht4x/sht4x.o
 exosensepi-objs += sensirion/sht4x/sht_git_version.o
