@@ -249,14 +249,11 @@ The following properties can be used to improve noise detection and filtering. T
 
 ### <a name="1wire"></a>1-Wire
 
-If 1-wire is configured, you will find the list of connected 1-Wire sensors' IDs in `/sys/bus/w1/devices/` with format `28-XXXXXXXXXXXX`.    
-To get the measured temperature read the file `w1_slave` under the sensor's directory, e.g.:
+If 1-wire is configured, you will find the list of connected 1-Wire sensors' IDs in `/sys/bus/w1/devices/` with format `28-XXXXXXXXXXXX`.
+To get the measured temperature (in &deg;C/1000) read the file `temperature` under the sensor's directory, e.g.:
 
-    $ cat /sys/bus/w1/devices/28-XXXXXXXXXXXX/w1_slave 
-    25 01 55 00 7f ff 0c 0c 08 : crc=08 YES
-    25 01 55 00 7f ff 0c 0c 08 t=18312
-    
-At the end of the first line you will read `YES` if the communication succeded and the read temperature value will be reported at the end of the second line expressed in &deg;C/1000.
+    $ cat /sys/bus/w1/devices/28-XXXXXXXXXXXX/temperature 
+    24625
 
 ### <a name="microphone"></a>Microphone
 
