@@ -1,7 +1,7 @@
 /*
  * Exo Sense Pi kernel module
  *
- *     Copyright (C) 2020-2022 Sfera Labs S.r.l.
+ *     Copyright (C) 2020-2023 Sfera Labs S.r.l.
  *
  *     For information, visit https://www.sferalabs.cc
  *
@@ -61,7 +61,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.10");
+MODULE_VERSION("2.11");
 
 static int temp_calib_m = -1000;
 module_param( temp_calib_m, int, S_IRUGO);
