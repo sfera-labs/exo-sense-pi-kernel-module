@@ -61,7 +61,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.12");
+MODULE_VERSION("2.13");
 
 static int temp_calib_m = -1000;
 module_param( temp_calib_m, int, S_IRUGO);
@@ -1865,11 +1865,6 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int exosensepi_i2c_remove(struct i2c_client *client) {
-	printk(KERN_INFO "exosensepi: - | i2c remove addr 0x%02hx\n", client->addr);
-	return 0;
-}
-
 const struct of_device_id exosensepi_of_match[] = {
 	{ .compatible = "sferalabs,exosensepi", },
 	{ },
@@ -1889,7 +1884,6 @@ static struct i2c_driver exosensepi_i2c_driver = {
 		.of_match_table = of_match_ptr(exosensepi_of_match),
 	},
 	.probe = exosensepi_i2c_probe,
-	.remove = exosensepi_i2c_remove,
 	.id_table = exosensepi_i2c_id,
 };
 
