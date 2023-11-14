@@ -32,6 +32,7 @@
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
+#include <linux/version.h>
 
 #define GPIO_LED 22
 #define GPIO_BUZZ 27
@@ -61,7 +62,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.13");
+MODULE_VERSION("2.14");
 
 static int temp_calib_m = -1000;
 module_param( temp_calib_m, int, S_IRUGO);
@@ -1836,8 +1837,12 @@ static ssize_t devAttrSndEvalFreqBandsType_store(struct device *dev,
 	return count;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)
+static int exosensepi_i2c_probe(struct i2c_client *client) {
+#else
 static int exosensepi_i2c_probe(struct i2c_client *client,
 		const struct i2c_device_id *id) {
+#endif
 	uint16_t conf;
 	int i;
 	if (client->addr == 0x44) {
@@ -1982,7 +1987,12 @@ static int __init exosensepi_init(void) {
 
 	wiegandInit(&w);
 
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)
+	pDeviceClass = class_create("exosensepi");
+#else
 	pDeviceClass = class_create(THIS_MODULE, "exosensepi");
+#endif
 	if (IS_ERR(pDeviceClass)) {
 		printk(KERN_ALERT "exosensepi: * | failed to create device class\n");
 		goto fail;
