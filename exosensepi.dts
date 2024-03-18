@@ -5,15 +5,36 @@
 	compatible = "brcm,bcm2835";
 	
 	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			dios: dios@0 {
+				compatible = "sferalabs,exosensepi";
+				pinctrl-names = "default";
+				pinctrl-0 = <&dios_pins>;
+				status = "okay";
+				
+				exosensepi_di1-gpios = <&gpio 16 0>;
+				exosensepi_di2-gpios = <&gpio 17 0>;
+				exosensepi_pir-gpios = <&gpio 23 0>;
+				exosensepi_ttl1-gpios = <&gpio 4 0>;
+				exosensepi_ttl2-gpios = <&gpio 5 0>;
+				exosensepi_led-gpios = <&gpio 22 0>;
+				exosensepi_buzz-gpios = <&gpio 27 0>;
+				exosensepi_do1-gpios = <&gpio 12 0>;
+			};
+		};
+	};
+	
+	fragment@1 {
 		target = <&gpio>;
 		__overlay__ {
-			exosensepi_di: exosensepi_di {
+			dios_pins: dios_pins {
 				brcm,pins = <16 17 23>;
 				brcm,function = <0>; /* in */
 				brcm,pull = <0>; /* no pull */
 			};
 			
-			exosensepi_buzz: exosensepi_buzz {
+			buzz_pwm: buzz_pwm {
 				/* PWM1: 13,4(Alt0) */
 				brcm,pins = <13>;
 				brcm,function = <4>; 
@@ -21,17 +42,17 @@
 		};
 	};
 	
-	fragment@1 {
+	fragment@2 {
 		target = <&pwm>;
 		__overlay__ {
 			pinctrl-names = "default";
-			pinctrl-0 = <&exosensepi_buzz &exosensepi_di>;
+			pinctrl-0 = <&buzz_pwm>;
 			assigned-clock-rates = <100000000>;
 			status = "okay";
 		};
 	};
 	
-	fragment@2 {
+	fragment@3 {
 		target = <&i2c_arm>;
 		__overlay__ {
 			#address-cells = <1>;
@@ -76,14 +97,14 @@
 		};
 	};
 	
-	fragment@3 {
+	fragment@4 {
 		target = <&i2s>;
 		__overlay__ {
 			status = "okay";
 		};
 	};
 	
-	fragment@4 {
+	fragment@5 {
 		target-path = "/";
 		__overlay__ {
 			card_codec: card-codec {
@@ -94,7 +115,7 @@
 		};
 	};
 
-	fragment@5 {
+	fragment@6 {
 		target = <&sound>;
 		__overlay__ {
 			compatible = "simple-audio-card";
@@ -109,5 +130,4 @@
 			};
 		};
 	};
-
 };

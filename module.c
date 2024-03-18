@@ -1,7 +1,7 @@
 /*
  * Exo Sense Pi kernel module
  *
- *     Copyright (C) 2020-2023 Sfera Labs S.r.l.
+ *     Copyright (C) 2020-2024 Sfera Labs S.r.l.
  *
  *     For information, visit https://www.sferalabs.cc
  *
@@ -33,19 +33,7 @@
 #include <linux/slab.h>
 #include <linux/sort.h>
 #include <linux/version.h>
-
-#define GPIO_LED 22
-#define GPIO_BUZZ 27
-
-#define GPIO_PIR 23
-
-#define GPIO_DO1 12
-
-#define GPIO_DI1 16
-#define GPIO_DI2 17
-
-#define GPIO_TTL1 4
-#define GPIO_TTL2 5
+#include <linux/platform_device.h>
 
 #define THA_READ_INTERVAL_MS 1000
 #define THA_DT_MEDIAN_PERIOD_MS 600000
@@ -59,10 +47,12 @@
 
 #define SND_EVAL_MAX_BANDS 36
 
+#define LOG_TAG "exosensepi: "
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.14");
+MODULE_VERSION("2.15");
 
 static int temp_calib_m = -1000;
 module_param( temp_calib_m, int, S_IRUGO);
@@ -384,27 +374,23 @@ enum ttlEnum {
 
 static struct GpioBean gpioLed = {
 	.name = "exosensepi_led",
-	.gpio = GPIO_LED,
-	.mode = GPIO_MODE_OUT,
+	.flags = GPIOD_OUT_LOW,
 };
 
 static struct GpioBean gpioBuzz = {
 	.name = "exosensepi_buzz",
-	.gpio = GPIO_BUZZ,
-	.mode = GPIO_MODE_OUT,
+	.flags = GPIOD_OUT_LOW,
 };
 
 static struct GpioBean gpioDO1 = {
 	.name = "exosensepi_do1",
-	.gpio = GPIO_DO1,
-	.mode = GPIO_MODE_OUT,
+	.flags = GPIOD_OUT_LOW,
 };
 
 static struct DebouncedGpioBean gpioPir = {
 	.gpio = {
 		.name = "exosensepi_pir",
-		.gpio = GPIO_PIR,
-		.mode = GPIO_MODE_IN,
+		.flags = GPIOD_IN,
 	},
 };
 
@@ -412,15 +398,13 @@ static struct DebouncedGpioBean gpioDI[] = {
 	[DI1] = {
 		.gpio = {
 			.name = "exosensepi_di1",
-			.gpio = GPIO_DI1,
-			.mode = GPIO_MODE_IN,
+			.flags = GPIOD_IN,
 		},
 	},
 	[DI2] = {
 		.gpio = {
 			.name = "exosensepi_di2",
-			.gpio = GPIO_DI2,
-			.mode = GPIO_MODE_IN,
+			.flags = GPIOD_IN,
 		},
 	},
 };
@@ -428,11 +412,9 @@ static struct DebouncedGpioBean gpioDI[] = {
 static struct GpioBean gpioTtl[] = {
 	[TTL1] = {
 		.name = "exosensepi_ttl1",
-		.gpio = GPIO_TTL1,
 	},
 	[TTL2] = {
 		.name = "exosensepi_ttl2",
-		.gpio = GPIO_TTL2,
 	},
 };
 
@@ -1091,7 +1073,7 @@ int write_settings_to_proc_buffer(void) {
 
 		return 0;
 	} else {
-		printk(KERN_ALERT "exosensepi: * | proc setting file write failed\n");
+		pr_alert(LOG_TAG "proc setting file write failed\n");
 		return -ENOMEM;
 	}
 }
@@ -1866,7 +1848,7 @@ static int exosensepi_i2c_probe(struct i2c_client *client,
 			}
 		}
 	}
-	printk(KERN_INFO "exosensepi: - | i2c probe addr 0x%02hx\n", client->addr);
+	pr_info(LOG_TAG "i2c probe addr 0x%02hx\n", client->addr);
 	return 0;
 }
 
@@ -1944,12 +1926,12 @@ static void cleanup(void) {
 	gpioFreeDebounce(&gpioPir);
 }
 
-static int __init exosensepi_init(void) {
+static int exosensepi_init(struct platform_device *pdev) {
 	struct DeviceBean *db;
 	struct DeviceAttrBean *dab;
 	int i, di, ai;
 
-	printk(KERN_INFO "exosensepi: - | init\n");
+	pr_info(LOG_TAG "init\n");
 
 	i2c_add_driver(&exosensepi_i2c_driver);
 	mutex_init(&exosensepi_i2c_mutex);
@@ -1958,28 +1940,29 @@ static int __init exosensepi_init(void) {
 
 	VocAlgorithm_init(&voc_algorithm_params);
 
+	gpioSetPlatformDev(pdev);
+
 	for (i = 0; i < DI_SIZE; i++) {
 		if (gpioInitDebounce(&gpioDI[i])) {
-			pr_alert("exosensepi: * | error setting up GPIO %d\n",
-					gpioDI[i].gpio.gpio);
+			pr_alert(LOG_TAG "error setting up GPIO %s\n", gpioDI[i].gpio.name);
 			goto fail;
 		}
 	}
 	if (gpioInit(&gpioLed)) {
-		pr_alert("exosensepi: * | error setting up GPIO %d\n", gpioLed.gpio);
+		pr_alert(LOG_TAG "error setting up GPIO %s\n", gpioLed.name);
 		goto fail;
 	}
 	if (gpioInit(&gpioBuzz)) {
-		pr_alert("exosensepi: * | error setting up GPIO %d\n", gpioBuzz.gpio);
+		pr_alert(LOG_TAG "error setting up GPIO %s\n", gpioBuzz.name);
 		goto fail;
 	}
 	if (gpioInit(&gpioDO1)) {
-		pr_alert("exosensepi: * | error setting up GPIO %d\n", gpioDO1.gpio);
+		pr_alert(LOG_TAG "error setting up GPIO %s\n", gpioDO1.name);
 		goto fail;
 	}
 	if (gpioInitDebounce(&gpioPir)) {
-		pr_alert("exosensepi: * | error setting up GPIO %d\n",
-				gpioPir.gpio.gpio);
+		pr_alert(LOG_TAG "error setting up GPIO %s\n",
+				gpioPir.gpio.name);
 		goto fail;
 	}
 	gpioPir.onMinTime_usec = 0;
@@ -1987,14 +1970,13 @@ static int __init exosensepi_init(void) {
 
 	wiegandInit(&w);
 
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,5,0)
 	pDeviceClass = class_create("exosensepi");
 #else
 	pDeviceClass = class_create(THIS_MODULE, "exosensepi");
 #endif
 	if (IS_ERR(pDeviceClass)) {
-		printk(KERN_ALERT "exosensepi: * | failed to create device class\n");
+		pr_alert(LOG_TAG "failed to create device class\n");
 		goto fail;
 	}
 
@@ -2003,7 +1985,7 @@ static int __init exosensepi_init(void) {
 		db = &devices[di];
 		db->pDevice = device_create(pDeviceClass, NULL, 0, NULL, db->name);
 		if (IS_ERR(db->pDevice)) {
-			pr_alert("ionopi: * | failed to create device '%s'\n", db->name);
+			pr_alert(LOG_TAG "failed to create device '%s'\n", db->name);
 			goto fail;
 		}
 
@@ -2011,7 +1993,7 @@ static int __init exosensepi_init(void) {
 		while (db->devAttrBeans[ai].devAttr.attr.name != NULL) {
 			dab = &db->devAttrBeans[ai];
 			if (device_create_file(db->pDevice, &dab->devAttr)) {
-				pr_alert("ionopi: * | failed to create device file '%s/%s'\n",
+				pr_alert(LOG_TAG "failed to create device file '%s/%s'\n",
 						db->name, dab->devAttr.attr.name);
 				goto fail;
 			}
@@ -2037,23 +2019,33 @@ static int __init exosensepi_init(void) {
 
 	tha_thread = kthread_run(thaThreadFunction, NULL, "exosensepi THA");
 	if (!tha_thread) {
-		printk(KERN_ALERT "exosensepi: * | THA thread creation failed\n");
+		pr_alert(LOG_TAG "THA thread creation failed\n");
 		goto fail;
 	}
 
-	printk(KERN_INFO "exosensepi: - | ready\n");
+	pr_info(LOG_TAG "ready\n");
 	return 0;
 
 	fail:
-	printk(KERN_ALERT "exosensepi: * | init failed\n");
+	pr_alert(LOG_TAG "init failed\n");
 	cleanup();
 	return -1;
 }
 
-static void __exit exosensepi_exit(void) {
+static int exosensepi_exit(struct platform_device *pdev) {
 	cleanup();
-	printk(KERN_INFO "exosensepi: - | exit\n");
+	pr_info(LOG_TAG "exit\n");
+	return 0;
 }
 
-module_init( exosensepi_init);
-module_exit( exosensepi_exit);
+static struct platform_driver exosensepi_driver = {
+	.probe = exosensepi_init,
+	.remove = exosensepi_exit,
+	.driver = {
+		.name = "exosensepi",
+		.owner = THIS_MODULE,
+		.of_match_table = exosensepi_of_match,
+	}
+};
+
+module_platform_driver(exosensepi_driver);
