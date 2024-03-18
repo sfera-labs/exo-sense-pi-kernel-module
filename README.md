@@ -46,6 +46,7 @@ Clone this repo:
 Make and install:
 
     cd exo-sense-pi-kernel-module
+    make clean
     make
     sudo make install
     
