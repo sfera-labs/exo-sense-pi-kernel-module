@@ -285,16 +285,16 @@ You can add software volume control with alsamixer; to this end, copy the `asoun
 
     cp asoundrc ~/.asoundrc
 
-then run `arecord` once and stop it (<kbd>Ctrl</kbd> + <kbd>C</kbd>):
+Run `arecord -L` and check that `dmic_hw` and `dmic_sv` are listed.
 
-    arecord -D plughw:0 -c1 -r 48000 -f S32_LE -t wav -V mono -v rec.wav
-
-Now run `alsamixer` and, press <kbd>F6</kbd> to open the sound card selector and select `exosensepi-mic`.   
-Press <kbd>F4</kbd> to select the "Capture" view , adjust the volume with the up/down arrow keys and press <kbd>Esc</kbd> to save and exit.
-
-You can now record from the `dmic_sv` device with adjusted volume:
+Then run `arecord` once with `dmic_sv` as device and stop it (<kbd>Ctrl</kbd> + <kbd>C</kbd>):
 
     arecord -D dmic_sv -c2 -r 44100 -f S32_LE -t wav -V mono -v rec-vol.wav
+
+Now run `alsamixer`, press <kbd>F6</kbd> to open the sound card selector, and select `exosensepi-mic`.   
+Press <kbd>F4</kbd> to select the "Capture" view , adjust the volume with the up/down arrow keys and press <kbd>Esc</kbd> to save and exit.
+
+You can now record from the `dmic_sv` device with adjusted volume.
     
 ### <a name="soundEval"></a>SoundEval - Sound Level Evaluation Utility
 
