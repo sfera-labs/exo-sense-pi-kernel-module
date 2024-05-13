@@ -52,7 +52,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.15");
+MODULE_VERSION("2.16");
 
 static int temp_calib_m = -1000;
 module_param( temp_calib_m, int, S_IRUGO);
