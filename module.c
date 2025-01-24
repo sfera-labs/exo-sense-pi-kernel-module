@@ -52,7 +52,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.16");
+MODULE_VERSION("2.17");
 
 static int temp_calib_m = -1000;
 module_param( temp_calib_m, int, S_IRUGO);
@@ -1935,8 +1935,6 @@ static int exosensepi_init(struct platform_device *pdev) {
 
 	i2c_add_driver(&exosensepi_i2c_driver);
 	mutex_init(&exosensepi_i2c_mutex);
-
-	ateccAddDriver();
 
 	VocAlgorithm_init(&voc_algorithm_params);
 
