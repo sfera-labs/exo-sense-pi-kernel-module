@@ -1,7 +1,7 @@
 /*
  * Exo Sense Pi kernel module
  *
- *     Copyright (C) 2020-2024 Sfera Labs S.r.l.
+ *     Copyright (C) 2020-2025 Sfera Labs S.r.l.
  *
  *     For information, visit https://www.sferalabs.cc
  *
@@ -52,7 +52,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
 MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.17");
+MODULE_VERSION("2.18");
 
 static int temp_calib_m = -1000;
 module_param( temp_calib_m, int, S_IRUGO);
@@ -1057,7 +1057,7 @@ static struct DeviceBean devices[] = {
 	{ }
 };
 
-int write_settings_to_proc_buffer(void) {
+static int write_settings_to_proc_buffer(void) {
 	char *tmp = kzalloc(PROCFS_MAX_SIZE, GFP_KERNEL);
 	if (tmp != NULL) {
 		sprintf(tmp, "%s%d%s%d%s%lu%s%d%s%d%s",
@@ -1124,7 +1124,7 @@ static void exosensepi_i2c_unlock(void) {
 	mutex_unlock(&exosensepi_i2c_mutex);
 }
 
-struct i2c_client* sensirion_i2c_client_get(uint8_t address) {
+static struct i2c_client* sensirion_i2c_client_get(uint8_t address) {
 	if (sht40_i2c_client != NULL && sht40_i2c_client->addr == address) {
 		return sht40_i2c_client;
 	}
@@ -1301,7 +1301,7 @@ static int16_t thaReadCalibrate(int32_t *t, int32_t *rh, int32_t *dt,
 	return 0;
 }
 
-int thaThreadFunction(void *data) {
+static int thaThreadFunction(void *data) {
 	int16_t i, ret;
 	int32_t t, rh, dt, tCal, rhCal, voc_index;
 	uint16_t sraw;
@@ -2030,10 +2030,16 @@ static int exosensepi_init(struct platform_device *pdev) {
 	return -1;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+static void exosensepi_exit(struct platform_device *pdev) {
+#else
 static int exosensepi_exit(struct platform_device *pdev) {
-	cleanup();
-	pr_info(LOG_TAG "exit\n");
-	return 0;
+#endif
+  cleanup();
+  pr_info(LOG_TAG "exit\n");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 12, 0)
+  return 0;
+#endif
 }
 
 static struct platform_driver exosensepi_driver = {
