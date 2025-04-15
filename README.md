@@ -1,6 +1,6 @@
 # Exo Sense Pi kernel module
 
-Raspberry Pi OS Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
+Raspberry Pi OS (Debian) Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
 
 - [Compile and Install](#install)
 - [Calibration](#tha-calibration)
@@ -34,10 +34,6 @@ If you are using a **32-bit** OS, add to `/boot/firmware/config.txt` (`/boot/con
 Reboot:
 
     sudo reboot
-    
-After reboot, install git and the Raspberry Pi kernel headers:
-
-    sudo apt install git raspberrypi-kernel-headers
 
 Clone this repo:
 
@@ -62,8 +58,8 @@ Add to `/boot/firmware/config.txt` (`/boot/config.txt` in older versions) the fo
 If you want to use TTL1 as 1-Wire bus, add this line too:
 
     dtoverlay=w1-gpio
-    
-Optionally, to be able to use the `/sys/class/exosensepi/` files not as super user, create a new group "exosensepi" and set it as the module owner group by adding an udev rule:
+
+Optionally, to access the sysfs interface without superuser privileges, create a new group "exosensepi" and set it as the module owner group by adding an **udev** rule:
 
     sudo groupadd exosensepi
     sudo cp 99-exosensepi.rules /etc/udev/rules.d/
