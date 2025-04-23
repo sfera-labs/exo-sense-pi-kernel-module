@@ -35,6 +35,10 @@ Reboot:
 
     sudo reboot
 
+After reboot, install git and the kernel headers:
+ 
+     sudo apt install git linux-headers-$(uname -r)
+
 Clone this repo:
 
     git clone --depth 1 https://github.com/sfera-labs/exo-sense-pi-kernel-module.git
