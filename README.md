@@ -2,6 +2,9 @@
 
 Raspberry Pi OS (Debian) Kernel module and utilities for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
 
+[![Build tests [stable oldstable]](https://github.com/sfera-labs/exo-sense-pi-kernel-module/actions/workflows/build-apt.yml/badge.svg)](https://github.com/sfera-labs/exo-sense-pi-kernel-module/actions/workflows/build-apt.yml)
+[![Build tests [firmware]](https://github.com/sfera-labs/exo-sense-pi-kernel-module/actions/workflows/build-fw.yml/badge.svg)](https://github.com/sfera-labs/exo-sense-pi-kernel-module/actions/workflows/build-fw.yml)
+
 - [Installation](#install)
 - [Calibration](#tha-calibration)
 - [Usage](#usage)
