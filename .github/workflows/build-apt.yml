@@ -1,0 +1,15 @@
+name: Build tests [stable oldstable]
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'
+
+jobs:
+  build:
+    uses: sfera-labs/sl-kmod-commons/.github/workflows/kmod-build-apt.yml@main
+    with:
+      sources: 'rpi-archive'
+      streams: 'stable,oldstable'
