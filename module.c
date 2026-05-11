@@ -1,7 +1,7 @@
 /*
  * Exo Sense Pi kernel module
  *
- *     Copyright (C) 2020-2025 Sfera Labs S.r.l.
+ *     Copyright (C) 2020-2026 Sfera Labs S.r.l.
  *
  *     For information, visit https://www.sferalabs.cc
  *
@@ -12,10 +12,10 @@
  *
  */
 
-#include "commons/commons.h"
-#include "gpio/gpio.h"
-#include "wiegand/wiegand.h"
-#include "atecc/atecc.h"
+#include "commons/utils/utils.h"
+#include "commons/gpio/gpio.h"
+#include "commons/wiegand/wiegand.h"
+#include "commons/atecc/atecc.h"
 #include "sensirion/sht4x/sht4x.h"
 #include "sensirion/sgp40/sgp40.h"
 #include "sensirion/sgp40_voc_index/sensirion_voc_algorithm.h"
@@ -48,11 +48,6 @@
 #define SND_EVAL_MAX_BANDS 36
 
 #define LOG_TAG "exosensepi: "
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
-MODULE_DESCRIPTION("Exo Sense Pi driver module");
-MODULE_VERSION("2.18");
 
 static int temp_calib_m = -1000;
 module_param( temp_calib_m, int, S_IRUGO);
@@ -1078,7 +1073,8 @@ static int write_settings_to_proc_buffer(void) {
 	}
 }
 
-struct GpioBean* gpioGetBean(struct device *dev, struct device_attribute *attr) {
+struct GpioBean *gpioGetBean(struct device *dev, struct device_attribute *attr,
+                             const char **vals) {
 	struct DeviceAttrBean *dab;
 	dab = container_of(attr, struct DeviceAttrBean, devAttr);
 	if (dab == NULL) {
@@ -2051,5 +2047,10 @@ static struct platform_driver exosensepi_driver = {
 		.of_match_table = exosensepi_of_match,
 	}
 };
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Sfera Labs - http://sferalabs.cc");
+MODULE_DESCRIPTION("Exo Sense Pi driver module");
+MODULE_VERSION(EXOSENSEPI_MODULE_VERSION);
 
 module_platform_driver(exosensepi_driver);

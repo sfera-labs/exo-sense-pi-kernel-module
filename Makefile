@@ -1,25 +1,11 @@
-obj-m += exosensepi.o
- 
-exosensepi-objs := module.o
-exosensepi-objs += commons/commons.o
-exosensepi-objs += gpio/gpio.o
-exosensepi-objs += wiegand/wiegand.o
-exosensepi-objs += sensirion/common/sensirion_common.o
-exosensepi-objs += sensirion/sht4x/sht4x.o
-exosensepi-objs += sensirion/sht4x/sht_git_version.o
-exosensepi-objs += sensirion/sgp40/sgp40.o
-exosensepi-objs += sensirion/sgp40/sgp_git_version.o
-exosensepi-objs += sensirion/sgp40_voc_index/sensirion_voc_algorithm.o
-exosensepi-objs += atecc/atecc.o
+MODULE_MAIN_OBJ := module.o
+COMMON_MODULES := utils gpio wiegand atecc
+MODULE_EXTRA_OBJS := sensirion/common/sensirion_common.o \
+                     sensirion/sht4x/sht4x.o \
+                     sensirion/sht4x/sht_git_version.o \
+                     sensirion/sgp40/sgp40.o \
+                     sensirion/sgp40/sgp_git_version.o \
+                     sensirion/sgp40_voc_index/sensirion_voc_algorithm.o
 
-ccflags-y := -std=gnu99 -Wno-declaration-after-statement
-
-all:
-	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) modules
-
-clean:
-	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) clean
-
-install:
-	sudo install -m 644 -c exosensepi.ko /lib/modules/$(shell uname -r)
-	sudo depmod
+SOURCE_DIR := $(if $(src),$(src),$(CURDIR))
+include $(SOURCE_DIR)/commons/scripts/kmod-common.mk

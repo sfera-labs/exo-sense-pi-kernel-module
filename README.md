@@ -1,8 +1,8 @@
 # Exo Sense Pi kernel module
 
-Raspberry Pi OS (Debian) Kernel module for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
+Raspberry Pi OS (Debian) Kernel module and utilities for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
 
-- [Compile and Install](#install)
+- [Installation](#install)
 - [Calibration](#tha-calibration)
 - [Usage](#usage)
     - [LED](#led)
@@ -20,7 +20,7 @@ Raspberry Pi OS (Debian) Kernel module for [Exo Sense Pi](https://www.sferalabs.
     - [Microphone](#microphone)
     - [SoundEval - Sound Level Evaluation Utility](#soundEval)
 
-## <a name="install"></a>Compile and Install
+## <a name="install"></a>Installation
 
 Make sure your system is updated:
 
@@ -35,27 +35,39 @@ Reboot:
 
     sudo reboot
 
-After reboot, install git and the kernel headers:
- 
-     sudo apt install git linux-headers-$(uname -r)
+After reboot, install required tools:
+
+    sudo apt install git device-tree-compiler dkms linux-headers-$(uname -r)
 
 Clone this repo:
 
     git clone --depth 1 https://github.com/sfera-labs/exo-sense-pi-kernel-module.git
-
-Make and install:
-
+    
     cd exo-sense-pi-kernel-module
+
+### Recommended installation mode: DKMS
+
+This is the recommended mode. It automatically rebuilds and reinstalls the module when new kernel versions are installed.
+
+Register, build and install with DKMS:
+
+    sudo dkms add .
+    sudo dkms build -m exosensepi -v $(cat VERSION)
+    sudo dkms install -m exosensepi -v $(cat VERSION)
+
+### Advanced installation mode: manual make install (running kernel only)
+
+Use this only if you specifically want to install for the current running kernel version only.
+
     make clean
     make
     sudo make install
-    
-Compile the Device Tree and install it:
 
-    dtc -@ -Hepapr -I dts -O dtb -o exosensepi.dtbo exosensepi.dts
-    sudo cp exosensepi.dtbo /boot/overlays/
+Manual mode does not provide automatic rebuild on kernel upgrades.
 
-Add to `/boot/firmware/config.txt` (`/boot/config.txt` in older versions) the following line:
+### Enable overlay at boot
+
+Add to `/boot/firmware/config.txt` the following line:
 
     dtoverlay=exosensepi
     
@@ -63,26 +75,12 @@ If you want to use TTL1 as 1-Wire bus, add this line too:
 
     dtoverlay=w1-gpio
 
-Optionally, to access the sysfs interface without superuser privileges, create a new group "exosensepi" and set it as the module owner group by adding an **udev** rule:
+### Optional non-root access to `/sys/class/exosensepi`
+
+The install process places `99-exosensepi.rules`, which sets owner group `exosensepi` for sysfs entries. To access the sysfs interface without superuser privileges, create the group and add your user, e.g. for user "pi":
 
     sudo groupadd exosensepi
-    sudo cp 99-exosensepi.rules /etc/udev/rules.d/
-
-and add your user to the group, e.g. for user "pi":
-
     sudo usermod -a -G exosensepi pi
-
-Install the calibration script and service:
-
-    sudo cp exosensepi-calibrate.service /lib/systemd/system/
-    sudo cp exosensepi-calibrate.py /usr/local/bin/
-    sudo chmod +x /usr/local/bin/exosensepi-calibrate.py
-    
-To use the [sound level evaluation functionalities](#soundEval), install the `soundEval` utility:
-
-    sh install-snd-eval.sh
-    
-This script will install 2 required libraries for the `soundEval` utility: `libasound2-dev` (version `>=1.1.8-1+rpt1` required) and `libfftw3-dev` (version `>=3.3.8-2` required).
 
 Finally, reboot:
 
@@ -93,7 +91,15 @@ Finally, reboot:
 Exo Sense Pi produces internal heat that influences its sensors readings. To compensate, the kernel module applies a transformation to the values reported by the temperature sensor based on calibration parameters computed by the procedure described below.    
 The compensated temperature values are, in turn, used to adjust humidity and VOC values.
 
-To perform the calibration procedure, enable the `exosensepi-calibrate` service:
+To perform the calibration procedure, follow the steps below.
+
+Install the calibration script and service:
+
+    sudo cp exosensepi-calibrate.service /lib/systemd/system/
+    sudo cp exosensepi-calibrate.py /usr/local/bin/
+    sudo chmod +x /usr/local/bin/exosensepi-calibrate.py
+
+Enable the `exosensepi-calibrate` service:
 
     sudo systemctl enable exosensepi-calibrate
 
@@ -395,6 +401,13 @@ Explaining all the different classes of sound level meters is out of the scope o
 - **A**: the data are frequency weighted according to the A-WEIGHTING function, which main purpose is to replicate the human ear response at different frequency bandwidths.
 - **C**: flat response with the extreme high (near 20kHz) and low (near 0 Hz) frequencies attenuated.
 - **Z**: no frequency adjustments are made in base to the frequency bandwidths.
+
+To use the sound level evaluation functionalities, install the `soundEval` utility:
+
+    sh install-snd-eval.sh
+    sudo reboot
+    
+This script will install 2 required libraries for the `soundEval` utility: `libasound2-dev` (version `>=1.1.8-1+rpt1` required) and `libfftw3-dev` (version `>=3.3.8-2` required).
 
 
 The `soundEval` utility functionalities can be accessed under `/sys/class/exosensepi/sound_eval/`:
