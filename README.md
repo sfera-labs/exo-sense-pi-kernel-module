@@ -1,6 +1,6 @@
 # Exo Sense Pi kernel module
 
-Raspberry Pi OS (Debian) Kernel module and utilities for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
+Debian-based Linux kernel module and utilities for [Exo Sense Pi](https://www.sferalabs.cc/product/exo-sense-pi/) - the multi-sensor module based on the Raspberry Pi Compute Module 4.
 
 [![Build tests [stable oldstable]](https://github.com/sfera-labs/exo-sense-pi-kernel-module/actions/workflows/build-apt.yml/badge.svg)](https://github.com/sfera-labs/exo-sense-pi-kernel-module/actions/workflows/build-apt.yml)
 [![Build tests [firmware]](https://github.com/sfera-labs/exo-sense-pi-kernel-module/actions/workflows/build-fw.yml/badge.svg)](https://github.com/sfera-labs/exo-sense-pi-kernel-module/actions/workflows/build-fw.yml)
@@ -25,73 +25,36 @@ Raspberry Pi OS (Debian) Kernel module and utilities for [Exo Sense Pi](https://
 
 ## <a name="install"></a>Installation
 
-Make sure your system is updated:
+For source-based installation, see this [installation guide](https://github.com/sfera-labs/sl-kmod-commons/blob/main/INSTALLATION.md).
+
+If the Sfera Labs APT repository is not configured yet, [add the repository and install its keyring](https://github.com/sfera-labs/apt#install).
+
+Install the package:
 
     sudo apt update
-    sudo apt upgrade
+    sudo apt install exosensepi-dkms
 
-If you are using a **32-bit** OS, add to `/boot/firmware/config.txt` (`/boot/config.txt` in older versions) the following line: [[why?](https://github.com/raspberrypi/firmware/issues/1795)]
+The package registers the module with DKMS, which builds it for kernels with matching headers and rebuilds it when new kernel headers are installed. It also installs the device-tree overlay and udev rules.
 
-    arm_64bit=0
-    
-Reboot:
-
-    sudo reboot
-
-After reboot, install required tools:
-
-    sudo apt install git device-tree-compiler dkms linux-headers-$(uname -r)
-
-Clone this repo:
+The calibration and SoundEval scripts are not included in the APT package. Clone the project repository to obtain them:
 
     git clone --depth 1 https://github.com/sfera-labs/exo-sense-pi-kernel-module.git
-    
-    cd exo-sense-pi-kernel-module
 
-### Recommended installation mode: DKMS
-
-This is the recommended mode. It automatically rebuilds and reinstalls the module when new kernel versions are installed.
-
-Register, build and install with DKMS:
-
-    sudo dkms add .
-    sudo dkms build -m $(cat MODULE_NAME) -v $(cat VERSION)
-    sudo dkms install -m $(cat MODULE_NAME) -v $(cat VERSION)
-
-### Alternative installation mode: manual install for running kernel only
-
-<details>
-
-<summary>Show</summary>
-
-Use this only if you specifically want to install for the current running kernel version only.
-
-    make clean
-    make
-    sudo make install
-
-Manual mode does not provide automatic rebuild on kernel upgrades.
-
-</details>
-
-### Enable overlay at boot
-
-Add to `/boot/firmware/config.txt` the following line:
+Enable the overlay by adding this to `/boot/firmware/config.txt`:
 
     dtoverlay=exosensepi
-    
-If you want to use TTL1 as 1-Wire bus, add this line too:
+
+If you want to use TTL1 as a 1-Wire bus, add this line too:
 
     dtoverlay=w1-gpio
 
-### Optional non-root access to `/sys/class/exosensepi`
+On legacy 32-bit Raspberry Pi OS versions that support this option, `arm_64bit=0` may be required. Add it to the same `config.txt` file. [[why?](https://github.com/raspberrypi/firmware/issues/1795)]
 
-The install process places `99-exosensepi.rules`, which sets owner group `exosensepi` for sysfs entries. To access the sysfs interface without superuser privileges, create the group and add your user, e.g. for user "pi":
+The install process creates the `exosensepi` group and places `99-exosensepi.rules`, which sets it as the owner group for sysfs entries. To access the sysfs interface without superuser privileges, add your user to the group, e.g. for user "pi":
 
-    sudo groupadd exosensepi
     sudo usermod -a -G exosensepi pi
 
-Finally, reboot:
+Finally, reboot to apply the configuration:
 
     sudo reboot
 
@@ -100,10 +63,11 @@ Finally, reboot:
 Exo Sense Pi produces internal heat that influences its sensors readings. To compensate, the kernel module applies a transformation to the values reported by the temperature sensor based on calibration parameters computed by the procedure described below.    
 The compensated temperature values are, in turn, used to adjust humidity and VOC values.
 
-To perform the calibration procedure, follow the steps below.
+To perform the calibration procedure, use the script and service from the cloned repository and follow the steps below.
 
 Install the calibration script and service:
 
+    cd exo-sense-pi-kernel-module
     sudo cp exosensepi-calibrate.service /lib/systemd/system/
     sudo cp exosensepi-calibrate.py /usr/local/bin/
     sudo chmod +x /usr/local/bin/exosensepi-calibrate.py
@@ -411,7 +375,7 @@ Explaining all the different classes of sound level meters is out of the scope o
 - **C**: flat response with the extreme high (near 20kHz) and low (near 0 Hz) frequencies attenuated.
 - **Z**: no frequency adjustments are made in base to the frequency bandwidths.
 
-To use the sound level evaluation functionalities, install the `soundEval` utility:
+Run `install-snd-eval.sh` from the cloned repository to install the `soundEval` utility:
 
     sh install-snd-eval.sh
     sudo reboot
